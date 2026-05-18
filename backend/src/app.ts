@@ -3,15 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 
-declare module "express";
-
 export const app = express();
-
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`TankUp V3 backend running on port ${PORT}`);
-});
 
 app.use(helmet());
 app.use(cors());

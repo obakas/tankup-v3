@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum DeliveryStatus {
+  CREATED
+  ASSIGNED
+  LOADING
+  EN_ROUTE
+  ARRIVED
+  MEASURING
+  OTP_PENDING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum ActorType {
+  CUSTOMER
+  DRIVER
+  FLEET_HEAD
+  ADMIN
+  SYSTEM
+}
+
+model Delivery {
+  id          String         @id @default(uuid())
+  status      DeliveryStatus @default(CREATED)
+  customerId  String?
+  driverId    String?
+  tankerId    String?
+  siteId      String?
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  events      DeliveryEvent[]
+  auditLogs   AuditLog[]
+}
+
+model DeliveryEvent {
+  id          String   @id @default(uuid())
+  deliveryId  String
+  type        String
+  actorType   ActorType
+  actorId     String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  delivery    Delivery @relation(fields: [deliveryId], references: [id])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorType   ActorType
+  actorId     String?
+  action      String
+  entityType  String
+  entityId    String
+  before      Json?
+  after       Json?
+  reason      String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  deliveryId  String?
+  delivery    Delivery? @relation(fields: [deliveryId], references: [id])
+}
