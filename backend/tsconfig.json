@@ -4,7 +4,6 @@
     // File Layout
     // "rootDir": "./src",
     "rootDir": ".",
-    "include": ["src", "prisma.config.ts", "prisma"],
     "outDir": "./dist",
     "allowImportingTsExtensions": true,
     "noEmit": true,
@@ -44,5 +43,6 @@
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
     "skipLibCheck": true,
-  }
+  },
+  "include": ["src", "prisma.config.ts", "prisma"],
 }
