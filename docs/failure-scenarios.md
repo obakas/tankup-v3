@@ -96,7 +96,7 @@ Driver opens incident:
 
 ```txt
 incident_type: OTP_REFUSAL
-delivery_stage: otp_pending
+delivery_stage: awaiting_otp
 evidence: photo/video/comment
 delivered_quantity
 ```
@@ -457,7 +457,7 @@ Mobile/web should allow:
 
 - retry,
 - save pending confirmation locally,
-- mark delivery as otp_pending.
+- mark delivery as awaiting_otp.
 
 ## MVP Rule
 

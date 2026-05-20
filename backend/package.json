@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "verify:delivery": "tsx scripts/verify-delivery-workflows.ts",
+    "test:delivery": "npm run verify:delivery",
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "start": "node dist/src/server.js"

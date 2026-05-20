@@ -75,7 +75,7 @@ The backend currently contains an early operational core:
 The current status flow is:
 
 ```txt
-CREATED → ASSIGNED → LOADING → EN_ROUTE → ARRIVED → MEASURING → OTP_PENDING → COMPLETED
+CREATED → ASSIGNED → LOADING → EN_ROUTE → ARRIVED → MEASURING → AWAITING_OTP → COMPLETED
 ```
 
 Terminal states:

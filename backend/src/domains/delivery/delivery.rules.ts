@@ -1,7 +1,7 @@
 import { ActorType, DeliveryStatus } from "@prisma/client";
 import { DeliveryEventType } from "./delivery.events.ts";
 
-type DeliveryTransitionRule = {
+export type DeliveryTransitionRule = {
   readonly to: DeliveryStatus;
   readonly eventType: DeliveryEventType;
   readonly actorTypes: readonly ActorType[];
@@ -93,7 +93,7 @@ export const DELIVERY_TRANSITIONS: Record<
   ],
   MEASURING: [
     {
-      to: DeliveryStatus.OTP_PENDING,
+      to: DeliveryStatus.AWAITING_OTP,
       eventType: DeliveryEventType.MEASUREMENT_COMPLETED,
       actorTypes: [ActorType.DRIVER],
     },
@@ -109,7 +109,7 @@ export const DELIVERY_TRANSITIONS: Record<
       requiresReason: true,
     },
   ],
-  OTP_PENDING: [
+  AWAITING_OTP: [
     {
       to: DeliveryStatus.COMPLETED,
       eventType: DeliveryEventType.DELIVERY_COMPLETED,
@@ -127,13 +127,20 @@ export const DELIVERY_TRANSITIONS: Record<
   SKIPPED: [],
 };
 
+
+function getDeliveryTransitionRules(from: DeliveryStatus) {
+  return DELIVERY_TRANSITIONS[from] ?? [];
+}
+
 export function findDeliveryTransitionRule(
   from: DeliveryStatus,
   to: DeliveryStatus
 ) {
-  return DELIVERY_TRANSITIONS[from].find((transition) => transition.to === to);
+  return getDeliveryTransitionRules(from).find(
+    (transition) => transition.to === to
+  );
 }
 
 export function getAllowedDeliveryStatuses(from: DeliveryStatus) {
-  return DELIVERY_TRANSITIONS[from].map((transition) => transition.to);
+  return getDeliveryTransitionRules(from).map((transition) => transition.to);
 }

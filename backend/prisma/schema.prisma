@@ -13,7 +13,7 @@ enum DeliveryStatus {
   EN_ROUTE
   ARRIVED
   MEASURING
-  OTP_PENDING
+  AWAITING_OTP
   COMPLETED
   FAILED
   SKIPPED
@@ -27,19 +27,57 @@ enum ActorType {
   SYSTEM
 }
 
+enum OperationalAlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NotificationChannel {
+  IN_APP
+}
+
+enum NotificationCategory {
+  TRANSACTIONAL
+  OPERATIONAL
+  ALERT
+  ESCALATION
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+}
+
 model Delivery {
-  id          String         @id @default(uuid())
-  status      DeliveryStatus @default(CREATED)
-  customerId  String?
-  driverId    String?
-  tankerId    String?
-  siteId      String?
+  id                        String         @id @default(uuid())
+  status                    DeliveryStatus @default(CREATED)
+  customerId                String?
+  driverId                  String?
+  tankerId                  String?
+  siteId                    String?
+  otpCode                   String?
+  otpExpiresAt              DateTime?
+  otpVerifiedAt             DateTime?
+  otpVerifiedByActorType    ActorType?
+  otpVerifiedByActorId      String?
+  otpAttemptCount           Int            @default(0)
 
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
 
-  events      DeliveryEvent[]
-  auditLogs   AuditLog[]
+  events                    DeliveryEvent[]
+  auditLogs                 AuditLog[]
+  alerts                    DeliveryAlert[]
+  notifications             Notification[]
 }
 
 model DeliveryEvent {
@@ -52,6 +90,7 @@ model DeliveryEvent {
   createdAt   DateTime @default(now())
 
   delivery    Delivery @relation(fields: [deliveryId], references: [id])
+  notifications Notification[]
 }
 
 model AuditLog {
@@ -69,4 +108,46 @@ model AuditLog {
 
   deliveryId  String?
   delivery    Delivery? @relation(fields: [deliveryId], references: [id])
+}
+
+model DeliveryAlert {
+  id          String                   @id @default(uuid())
+  deliveryId  String
+  type        String
+  severity    OperationalAlertSeverity
+  metadata    Json?
+  resolvedAt  DateTime?
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+
+  delivery    Delivery @relation(fields: [deliveryId], references: [id])
+
+  @@index([deliveryId, type, resolvedAt])
+}
+
+model Notification {
+  id                 String               @id @default(uuid())
+  recipientActorType ActorType
+  recipientActorId   String?
+  recipientKey       String
+  channel            NotificationChannel  @default(IN_APP)
+  category           NotificationCategory
+  priority           NotificationPriority @default(NORMAL)
+  title              String
+  message            String
+  relatedEntityType  String
+  relatedEntityId    String
+  status             NotificationStatus   @default(UNREAD)
+  metadata           Json?
+  readAt             DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  deliveryId         String?
+  delivery           Delivery?            @relation(fields: [deliveryId], references: [id])
+  sourceEventId      String
+  sourceEvent        DeliveryEvent        @relation(fields: [sourceEventId], references: [id])
+
+  @@unique([sourceEventId, recipientKey])
+  @@index([recipientKey, status, createdAt])
 }

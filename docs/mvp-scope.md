@@ -522,6 +522,56 @@ Operational problem recording.
 
 ---
 
+# Current Backend Implementation Snapshot
+
+The backend currently implements only the early operational delivery core:
+
+- `Delivery`
+- `DeliveryEvent`
+- `AuditLog`
+- `DeliveryAlert` schema
+- `Notification` schema and basic in-app notification records
+- delivery status transition service
+- delivery OTP generation and verification
+- delivery timeline read model
+- dev-only delivery routes
+
+Current lifecycle:
+
+```txt
+CREATED → ASSIGNED → LOADING → EN_ROUTE → ARRIVED → MEASURING → AWAITING_OTP → COMPLETED
+```
+
+Current terminal states:
+
+```txt
+COMPLETED
+FAILED
+SKIPPED
+```
+
+Current intentional gaps:
+
+- no customer request creation workflow,
+- no payment provider integration,
+- no dispatch engine or offer lifecycle,
+- no real driver/fleet/customer account model,
+- no site intelligence submission workflow,
+- no dispute workflow,
+- no incident workflow,
+- no payout workflow,
+- no admin override completion flow,
+- no automatic transition after OTP verification,
+- no SMS/email/WhatsApp sending,
+- no production notification delivery,
+- no live GPS tracking,
+- no hardware meter integration,
+- no automatic scheduled alert runner,
+- no persisted `DeliveryAlert` row writes from the current detector,
+- no alert-created notification fanout from the current detector.
+
+---
+
 # Excluded Initially
 
 ## Smart Meter Hardware

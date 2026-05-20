@@ -100,7 +100,7 @@ customer_site_warning
 loading_required
 navigation_started
 customer_unavailable_report_required
-otp_pending
+awaiting_otp
 delivery_completed
 incident_acknowledged
 ```
@@ -249,6 +249,34 @@ Escalation should occur when:
 - delivery stuck too long,
 - OTP not confirmed,
 - critical incident submitted.
+
+Current backend alert/notification behavior:
+
+- delivery transition events can create in-app notifications,
+- notification recipients are derived from `customerId`, `driverId`, plus global fleet-head/admin recipients,
+- duplicate notifications are prevented per source event and recipient key,
+- notifications can be listed and marked read through dev routes,
+- notification delivery channels beyond `IN_APP` are not implemented.
+
+Current alert scaffolding:
+
+- Prisma has a `DeliveryAlert` model.
+- The notification service recognizes `DELIVERY_ALERT_CREATED`.
+- The alert detector currently recognizes `LOADING_TOO_LONG`, `EN_ROUTE_TOO_LONG`, `ARRIVED_NOT_MEASURING`, `MEASURING_TOO_LONG`, `AWAITING_OTP_TOO_LONG`, and `REPEATED_OTP_FAILURES`.
+- The notification planner currently handles only `LOADING_TOO_LONG`, `EN_ROUTE_TOO_LONG`, and `REPEATED_OTP_FAILURES`.
+- Alert notifications are planned for driver, customer, fleet head, and admin depending on alert type.
+
+Current alert detection strategy:
+
+- `POST /dev/deliveries/check-alerts` runs a polling-style detector.
+- The detector scans deliveries in `LOADING`, `EN_ROUTE`, `ARRIVED`, `MEASURING`, and `AWAITING_OTP`.
+- Duration alerts use the event that entered the current status as the status start time when available.
+- Thresholds are currently hard-coded: loading 60 minutes, en route 120 minutes, arrived without measuring 30 minutes, measuring 45 minutes, awaiting OTP 30 minutes, repeated OTP failures 3 attempts.
+- New alerts create `DELIVERY_ALERT_CREATED` delivery events and audit logs.
+- Duplicate alerts are suppressed by checking for an existing `DELIVERY_ALERT_CREATED` event with the same `alertType`.
+- The detector currently emits to the in-process event bus, which only logs events.
+- The detector does not currently call notification creation.
+- The detector does not currently write rows to the `DeliveryAlert` table.
 
 Example:
 

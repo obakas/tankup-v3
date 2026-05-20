@@ -1,5 +1,24 @@
 # TankUp V3 Workflow
 
+## Current Backend Workflow Snapshot
+
+The current backend implements only the delivery execution core:
+
+```txt
+CREATED → ASSIGNED → LOADING → EN_ROUTE → ARRIVED → MEASURING → AWAITING_OTP → COMPLETED
+```
+
+Current backend workflow notes:
+
+- delivery transitions are server-validated,
+- each successful status transition writes a delivery event and audit log,
+- OTP generation is allowed in `ARRIVED` and `MEASURING`,
+- OTP verification is allowed in `AWAITING_OTP`,
+- OTP verification does not automatically complete the delivery,
+- `COMPLETED`, `FAILED`, and `SKIPPED` are terminal states.
+
+The broader workflows below describe product direction and include features not implemented yet.
+
 ---
 
 # Customer Workflow

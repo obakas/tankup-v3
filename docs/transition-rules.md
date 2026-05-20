@@ -37,6 +37,73 @@ Every transition must be:
 
 # 1. Delivery Request Transitions
 
+## Current Backend Delivery Transitions
+
+The current backend implements transitions for the `Delivery` model, not the full future `DeliveryRequest` lifecycle.
+
+Current status flow:
+
+```txt
+CREATED → ASSIGNED → LOADING → EN_ROUTE → ARRIVED → MEASURING → AWAITING_OTP → COMPLETED
+```
+
+Current allowed transitions:
+
+```txt
+CREATED → ASSIGNED
+ASSIGNED → LOADING
+ASSIGNED → SKIPPED
+LOADING → EN_ROUTE
+LOADING → FAILED
+LOADING → SKIPPED
+EN_ROUTE → ARRIVED
+EN_ROUTE → FAILED
+EN_ROUTE → SKIPPED
+ARRIVED → MEASURING
+ARRIVED → FAILED
+ARRIVED → SKIPPED
+MEASURING → AWAITING_OTP
+MEASURING → FAILED
+AWAITING_OTP → COMPLETED
+AWAITING_OTP → FAILED
+```
+
+Current actor rules:
+
+- `CREATED → ASSIGNED`: `ADMIN`, `SYSTEM`, or `FLEET_HEAD`.
+- `ASSIGNED → LOADING`: `DRIVER` or `FLEET_HEAD`.
+- `LOADING → EN_ROUTE`: `DRIVER`.
+- `EN_ROUTE → ARRIVED`: `DRIVER`.
+- `ARRIVED → MEASURING`: `DRIVER`.
+- `MEASURING → AWAITING_OTP`: `DRIVER`.
+- `AWAITING_OTP → COMPLETED`: `CUSTOMER`.
+- `FAILED` transitions: allowed only where listed above and require `reason`.
+- `SKIPPED` transitions: `ADMIN`, `SYSTEM`, or `FLEET_HEAD`; require `reason`.
+- Non-system actors must provide `actorId`.
+
+Every successful transition currently:
+
+- updates the delivery status inside a Prisma transaction,
+- creates a `DeliveryEvent`,
+- creates an `AuditLog`,
+- emits an in-process event bus event,
+- attempts to create notifications for the delivery event.
+
+`COMPLETED` has an additional guard: the delivery must already have `otpVerifiedAt`.
+
+The current backend does not implement direct shortcuts such as:
+
+```txt
+CREATED → COMPLETED
+ASSIGNED → COMPLETED
+LOADING → COMPLETED
+EN_ROUTE → COMPLETED
+ARRIVED → COMPLETED
+MEASURING → COMPLETED
+```
+
+---
+
 ## DeliveryRequestStatus
 
 ```txt
@@ -50,7 +117,7 @@ loading
 en_route
 arrived
 measuring
-otp_pending
+awaiting_otp
 completed
 failed
 cancelled
@@ -73,7 +140,7 @@ draft
 → en_route
 → arrived
 → measuring
-→ otp_pending
+→ awaiting_otp
 → completed
 ```
 
@@ -243,7 +310,7 @@ Audit:
 
 ---
 
-### measuring → otp_pending
+### measuring → awaiting_otp
 
 Triggered by:
 
@@ -261,7 +328,7 @@ Audit:
 
 ---
 
-### otp_pending → completed
+### awaiting_otp → completed
 
 Triggered by:
 
@@ -285,6 +352,42 @@ Financial effect:
 ---
 
 # 2. Exceptional Delivery Transitions
+
+## Current SKIPPED Rule
+
+`SKIPPED` is a terminal state in the current backend.
+
+It is currently allowed from:
+
+```txt
+ASSIGNED
+LOADING
+EN_ROUTE
+ARRIVED
+```
+
+It is not currently allowed from:
+
+```txt
+CREATED
+MEASURING
+AWAITING_OTP
+COMPLETED
+FAILED
+SKIPPED
+```
+
+Only these actor types can mark a delivery skipped:
+
+```txt
+ADMIN
+SYSTEM
+FLEET_HEAD
+```
+
+A non-empty `reason` is required. The transition writes `DELIVERY_SKIPPED` as the event/audit action and creates notifications for customer, driver, fleet head, and admin where recipients exist.
+
+---
 
 ## offer_sent → awaiting_dispatch
 
@@ -393,7 +496,7 @@ Effect:
 
 ---
 
-## otp_pending → disputed
+## awaiting_otp → disputed
 
 Possible reasons:
 

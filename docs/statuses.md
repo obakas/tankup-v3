@@ -1,6 +1,56 @@
 # TankUp V3 Statuses
 
+## Current Backend Delivery Statuses
+
+The current backend `Delivery` model uses these Prisma enum values:
+
+```txt
+CREATED
+ASSIGNED
+LOADING
+EN_ROUTE
+ARRIVED
+MEASURING
+AWAITING_OTP
+COMPLETED
+FAILED
+SKIPPED
+```
+
+Current happy path:
+
+```txt
+CREATED
+→ ASSIGNED
+→ LOADING
+→ EN_ROUTE
+→ ARRIVED
+→ MEASURING
+→ AWAITING_OTP
+→ COMPLETED
+```
+
+Current terminal states:
+
+```txt
+COMPLETED
+FAILED
+SKIPPED
+```
+
+Current implementation notes:
+
+- `COMPLETED` requires prior OTP verification on the delivery record.
+- `FAILED` requires a reason.
+- `SKIPPED` requires a reason and is only allowed from selected operational states.
+- The backend currently tracks `Delivery`, `DeliveryEvent`, `AuditLog`, and `Notification` around this core flow.
+- `DeliveryAlert` exists in the Prisma schema, but the current alert detector records alert events/audit logs rather than `DeliveryAlert` rows.
+
+---
+
 ## Delivery Request Status
+
+These are broader product/request statuses. They are not all implemented in the current backend delivery enum yet.
 
 - draft
 - pending_payment

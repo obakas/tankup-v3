@@ -266,7 +266,7 @@ Future:
   "actor_type": "admin",
   "action": "ADMIN_STATUS_OVERRIDE",
   "entity_type": "delivery_request",
-  "old_value": "otp_pending",
+  "old_value": "awaiting_otp",
   "new_value": "completed",
   "reason": "Customer confirmed via recorded support call after OTP network failure."
 }

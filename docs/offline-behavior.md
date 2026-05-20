@@ -162,7 +162,7 @@ OTP is sensitive.
 Recommended MVP rule:
 
 - OTP confirmation requires server.
-- If network fails, keep delivery in `otp_pending`.
+- If network fails, keep delivery in `awaiting_otp`.
 - Driver can report OTP network issue.
 - Admin may later resolve with audit evidence.
 

@@ -6,15 +6,16 @@ import {
 } from "./delivery.rules.ts";
 import { DeliveryEventType } from "./delivery.events.ts";
 import { createAuditLog } from "../audit/audit.service.ts";
+import { createNotificationsForDeliveryEvent } from "../notification/notification.service.ts";
 import { eventBus } from "../../events/eventBus.ts";
 import {
   DeliveryNotFoundError,
+  DeliveryCompletionRequiresVerifiedOtpError,
   DeliveryTransitionActorIdRequiredError,
-  DeliveryTransitionActorForbiddenError,
   DeliveryTransitionConflictError,
-  DeliveryTransitionReasonRequiredError,
   InvalidDeliveryTransitionError,
 } from "./delivery.errors.ts";
+import { validateDeliveryTransitionRequirements } from "./delivery.validation.ts";
 
 type TransitionDeliveryInput = {
   deliveryId: string;
@@ -50,17 +51,18 @@ export async function transitionDeliveryStatus(input: TransitionDeliveryInput) {
       );
     }
 
-    if (!transitionRule.actorTypes.includes(input.actorType)) {
-      throw new DeliveryTransitionActorForbiddenError(
+    validateDeliveryTransitionRequirements(
+      {
         from,
-        input.to,
-        input.actorType,
-        [...transitionRule.actorTypes]
-      );
-    }
+        to: input.to,
+        actorType: input.actorType,
+        ...(input.reason !== undefined ? { reason: input.reason } : {}),
+      },
+      transitionRule
+    );
 
-    if (transitionRule.requiresReason && !input.reason?.trim()) {
-      throw new DeliveryTransitionReasonRequiredError(from, input.to);
+    if (input.to === DeliveryStatus.COMPLETED && !delivery.otpVerifiedAt) {
+      throw new DeliveryCompletionRequiresVerifiedOtpError(input.deliveryId);
     }
 
     const transitionResult = await tx.delivery.updateMany({
@@ -92,7 +94,7 @@ export async function transitionDeliveryStatus(input: TransitionDeliveryInput) {
       metadata: input.metadata ?? null,
     };
 
-    await tx.deliveryEvent.create({
+    const deliveryEvent = await tx.deliveryEvent.create({
       data: {
         deliveryId: input.deliveryId,
         type: transitionRule.eventType,
@@ -125,6 +127,7 @@ export async function transitionDeliveryStatus(input: TransitionDeliveryInput) {
       delivery: updated,
       from,
       eventType: transitionRule.eventType,
+      eventId: deliveryEvent.id,
     };
   });
 
@@ -138,6 +141,8 @@ export async function transitionDeliveryStatus(input: TransitionDeliveryInput) {
       actorId: input.actorId ?? null,
     },
   });
+
+  await createNotificationsForDeliveryEvent(transition.eventId);
 
   return transition.delivery;
 }

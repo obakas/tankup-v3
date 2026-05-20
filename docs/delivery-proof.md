@@ -263,10 +263,56 @@ not scientific measurement certainty.
 
 # OTP Rules
 
-OTP should only become available after:
+Current backend OTP generation is allowed only while delivery status is:
 
-- arrival confirmation,
-- measurement initiation.
+```txt
+ARRIVED
+MEASURING
+```
+
+Current backend OTP verification is allowed only while delivery status is:
+
+```txt
+AWAITING_OTP
+```
+
+The generated OTP is:
+
+- 6 digits,
+- valid for 10 minutes,
+- stored on the delivery record while pending,
+- reset when a new OTP is generated.
+
+When OTP is generated, the backend records:
+
+- `DELIVERY_OTP_GENERATED` delivery event,
+- matching audit log,
+- expiry timestamp metadata.
+
+When OTP verification succeeds, the backend:
+
+- clears `otpCode`,
+- clears `otpExpiresAt`,
+- sets `otpVerifiedAt`,
+- stores `otpVerifiedByActorType`,
+- stores `otpVerifiedByActorId` when supplied,
+- records `DELIVERY_OTP_VERIFIED`,
+- writes a matching audit log.
+
+When OTP verification fails because the code is invalid or expired, the backend:
+
+- increments `otpAttemptCount`,
+- records `DELIVERY_OTP_FAILED`,
+- writes a matching audit log,
+- returns a domain error.
+
+Current completion rule:
+
+```txt
+AWAITING_OTP → COMPLETED
+```
+
+is accepted only after `otpVerifiedAt` exists.
 
 ---
 
@@ -274,6 +320,12 @@ OTP should only become available after:
 
 Drivers should NOT complete deliveries without OTP,
 except under specific recovery workflows.
+
+Current backend reality:
+
+- no driver-only completion exists,
+- no admin completion override exists yet,
+- OTP verification does not automatically transition the delivery to `COMPLETED`; completion still uses the transition endpoint afterward.
 
 ---
 

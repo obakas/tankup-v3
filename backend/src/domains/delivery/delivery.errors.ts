@@ -6,7 +6,11 @@ export type DeliveryErrorCode =
   | "DELIVERY_TRANSITION_ACTOR_FORBIDDEN"
   | "DELIVERY_TRANSITION_ACTOR_ID_REQUIRED"
   | "DELIVERY_TRANSITION_REASON_REQUIRED"
-  | "DELIVERY_TRANSITION_CONFLICT";
+  | "DELIVERY_TRANSITION_CONFLICT"
+  | "DELIVERY_COMPLETION_REQUIRES_VERIFIED_OTP"
+  | "DELIVERY_OTP_INVALID_STATUS"
+  | "DELIVERY_OTP_EXPIRED"
+  | "DELIVERY_OTP_INVALID";
 
 type DeliveryErrorDetails = Record<
   string,
@@ -92,5 +96,47 @@ export class DeliveryTransitionConflictError extends DeliveryDomainError {
       409,
       { deliveryId }
     );
+  }
+}
+
+export class DeliveryCompletionRequiresVerifiedOtpError extends DeliveryDomainError {
+  constructor(deliveryId: string) {
+    super(
+      "DELIVERY_COMPLETION_REQUIRES_VERIFIED_OTP",
+      "Delivery cannot be completed until OTP verification has passed",
+      409,
+      { deliveryId }
+    );
+  }
+}
+
+export class DeliveryOtpInvalidStatusError extends DeliveryDomainError {
+  constructor(
+    deliveryId: string,
+    status: DeliveryStatus,
+    allowedStatuses: readonly DeliveryStatus[]
+  ) {
+    super(
+      "DELIVERY_OTP_INVALID_STATUS",
+      `OTP operation is not allowed while delivery is ${status}`,
+      409,
+      { deliveryId, status, allowedStatuses: [...allowedStatuses] }
+    );
+  }
+}
+
+export class DeliveryOtpExpiredError extends DeliveryDomainError {
+  constructor(deliveryId: string) {
+    super("DELIVERY_OTP_EXPIRED", "Delivery OTP has expired", 400, {
+      deliveryId,
+    });
+  }
+}
+
+export class DeliveryOtpInvalidError extends DeliveryDomainError {
+  constructor(deliveryId: string) {
+    super("DELIVERY_OTP_INVALID", "Delivery OTP is invalid", 400, {
+      deliveryId,
+    });
   }
 }
