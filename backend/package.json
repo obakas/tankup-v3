@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "seed:delivery-scenarios": "tsx scripts/seed-delivery-scenarios.ts",
     "verify:delivery": "tsx scripts/verify-delivery-workflows.ts",
     "test:delivery": "npm run verify:delivery",
     "typecheck": "tsc --noEmit",

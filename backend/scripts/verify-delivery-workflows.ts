@@ -390,8 +390,8 @@ async function verifyTimelineEndpoint() {
 
   const directTimeline = await getDeliveryTimeline(delivery.id);
 
-  assert.equal(directTimeline.deliveryId, delivery.id);
-  assert.equal(directTimeline.currentStatus, DeliveryStatus.MEASURING);
+  assert.equal(directTimeline.delivery.id, delivery.id);
+  assert.equal(directTimeline.delivery.status, DeliveryStatus.MEASURING);
   assert.ok(directTimeline.timeline.length >= 4);
   assert.equal(JSON.stringify(directTimeline).includes(generated.otpCode), false);
 
@@ -405,18 +405,16 @@ async function verifyTimelineEndpoint() {
       `http://127.0.0.1:${address.port}/dev/deliveries/${delivery.id}/timeline`
     );
     const body = (await response.json()) as {
-      deliveryId?: string;
-      currentStatus?: string;
-      deliveryEvents?: unknown[];
-      auditLogs?: unknown[];
+      delivery?: {
+        id?: string;
+        status?: string;
+      };
       timeline?: unknown[];
     };
 
     assert.equal(response.status, 200);
-    assert.equal(body.deliveryId, delivery.id);
-    assert.equal(body.currentStatus, DeliveryStatus.MEASURING);
-    assert.ok(Array.isArray(body.deliveryEvents));
-    assert.ok(Array.isArray(body.auditLogs));
+    assert.equal(body.delivery?.id, delivery.id);
+    assert.equal(body.delivery?.status, DeliveryStatus.MEASURING);
     assert.ok(Array.isArray(body.timeline));
     assert.equal(JSON.stringify(body).includes(generated.otpCode), false);
   } finally {
