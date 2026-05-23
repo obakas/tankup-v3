@@ -35,6 +35,7 @@ All routes are mounted under `/dev`.
 | `GET` | `/dev/deliveries/:id/operations` | View operator-focused delivery state, OTP state, alerts, risk flags, and suggested action. |
 | `POST` | `/dev/deliveries/check-alerts` | Persist alert events/audit logs for current alert candidates. |
 | `GET` | `/dev/operations/alerts` | List current operational alert candidates without creating new alert events. |
+| `GET` | `/dev/operations/deliveries` | List deliveries for the Operations Control Room board. |
 | `POST` | `/dev/deliveries/:id/otp/generate` | Generate a delivery OTP in an allowed status. |
 | `POST` | `/dev/deliveries/:id/otp/verify` | Verify a delivery OTP while delivery is `AWAITING_OTP`. |
 | `GET` | `/dev/notifications` | List notifications. |
@@ -118,6 +119,53 @@ Returns current alert candidates, sorted by severity and age:
   ]
 }
 ```
+
+### `GET /dev/operations/deliveries`
+
+Returns a newest-updated-first delivery list for the Operations Control Room board. Supported optional query filters:
+
+- `status`: one current backend `DeliveryStatus`.
+- `limit`: defaults to `50`, maximum `200`.
+- `search`: matches delivery, customer, driver, tanker, or site identifiers.
+
+```json
+{
+  "generatedAt": "2026-05-21T00:00:00.000Z",
+  "filters": {
+    "status": "EN_ROUTE",
+    "limit": 50,
+    "search": "seed-delivery-scenario"
+  },
+  "deliveries": [
+    {
+      "id": "uuid",
+      "status": "EN_ROUTE",
+      "identifiers": {
+        "customerId": "seed-delivery-scenario:customer:en-route-too-long",
+        "orderId": null,
+        "requestId": null,
+        "driverId": "seed-delivery-scenario:driver:en-route-too-long",
+        "tankerId": "seed-delivery-scenario:tanker:en-route-too-long",
+        "siteId": "seed-delivery-scenario:site:en-route-too-long"
+      },
+      "volumeLitres": null,
+      "createdAt": "2026-05-21T00:00:00.000Z",
+      "updatedAt": "2026-05-21T00:00:00.000Z",
+      "lastEvent": {
+        "id": "uuid",
+        "type": "DRIVER_EN_ROUTE",
+        "actorType": "DRIVER",
+        "actorId": "seed-driver-en-route-too-long",
+        "metadata": {},
+        "createdAt": "2026-05-21T00:00:00.000Z"
+      },
+      "activeAlertsCount": 1
+    }
+  ]
+}
+```
+
+`orderId`, `requestId`, and `volumeLitres` are nullable because the current MVP delivery model does not have dedicated order/request/volume columns. `volumeLitres` is populated when measurement volume appears in delivery event metadata.
 
 ### `GET /dev/deliveries/:id/timeline`
 

@@ -81,6 +81,66 @@ const parseJson = async (response: Response): Promise<unknown> => {
   }
 }
 
+export class ApiRequestError extends Error {
+  status?: number
+  payload: unknown
+
+  constructor(message: string, payload: unknown, status?: number) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.payload = payload
+
+    if (status !== undefined) {
+      this.status = status
+    }
+  }
+}
+
+const getErrorMessage = (value: unknown, fallbackMessage: string) => {
+  if (isRecord(value)) {
+    if (typeof value.error === 'string') {
+      return value.error
+    }
+
+    if (typeof value.message === 'string') {
+      return value.message
+    }
+  }
+
+  return fallbackMessage
+}
+
+export const apiGet = async <TSuccess>(path: string): Promise<TSuccess> => {
+  try {
+    const response = await fetch(`${getApiBaseUrl()}${path}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+
+    const data = await parseJson(response)
+
+    if (!response.ok) {
+      throw new ApiRequestError(
+        getErrorMessage(data, 'Request failed'),
+        data,
+        response.status,
+      )
+    }
+
+    return data as TSuccess
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      throw error
+    }
+
+    throw new ApiRequestError('Network request failed', {
+      message: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
 export const apiRequest = async <TSuccess extends ApiSuccess<unknown>>(
   path: string,
   options: ApiRequestOptions = {},

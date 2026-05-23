@@ -72,6 +72,143 @@ export type DeliveryOperationsView = {
   generatedAt: string;
 };
 
+export type ListOperationsDeliveriesInput = {
+  status?: DeliveryStatus;
+  limit: number;
+  search?: string;
+};
+
+export type OperationsDeliveryListItem = {
+  id: string;
+  status: DeliveryStatus;
+  identifiers: {
+    customerId: string | null;
+    orderId: string | null;
+    requestId: string | null;
+    driverId: string | null;
+    tankerId: string | null;
+    siteId: string | null;
+  };
+  volumeLitres: number | null;
+  createdAt: string;
+  updatedAt: string;
+  lastEvent: OperationsEvent | null;
+  activeAlertsCount: number;
+};
+
+export type OperationsDeliveriesList = {
+  generatedAt: string;
+  filters: {
+    status: DeliveryStatus | null;
+    limit: number;
+    search: string | null;
+  };
+  deliveries: OperationsDeliveryListItem[];
+};
+
+export async function listOperationsDeliveries(
+  input: ListOperationsDeliveriesInput
+): Promise<OperationsDeliveriesList> {
+  const now = new Date();
+  const search = input.search?.trim() || null;
+  const where: Prisma.DeliveryWhereInput = {
+    ...(input.status ? { status: input.status } : {}),
+    ...(search
+      ? {
+          OR: [
+            { id: { contains: search, mode: "insensitive" } },
+            { customerId: { contains: search, mode: "insensitive" } },
+            { driverId: { contains: search, mode: "insensitive" } },
+            { tankerId: { contains: search, mode: "insensitive" } },
+            { siteId: { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const deliveries = await prisma.delivery.findMany({
+    where,
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+    take: input.limit,
+    select: {
+      id: true,
+      status: true,
+      customerId: true,
+      driverId: true,
+      tankerId: true,
+      siteId: true,
+      createdAt: true,
+      updatedAt: true,
+      otpVerifiedAt: true,
+      otpAttemptCount: true,
+      events: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          type: true,
+          actorType: true,
+          actorId: true,
+          metadata: true,
+          createdAt: true,
+        },
+      },
+      auditLogs: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          action: true,
+          actorType: true,
+          actorId: true,
+          reason: true,
+          metadata: true,
+          createdAt: true,
+        },
+      },
+      alerts: {
+        where: { resolvedAt: null },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          type: true,
+          severity: true,
+          metadata: true,
+          createdAt: true,
+          resolvedAt: true,
+        },
+      },
+    },
+  });
+
+  return {
+    generatedAt: now.toISOString(),
+    filters: {
+      status: input.status ?? null,
+      limit: input.limit,
+      search,
+    },
+    deliveries: deliveries.map((delivery) => {
+      const candidateAlerts = detectDeliveryAlertCandidates(delivery, now);
+
+      return {
+        id: delivery.id,
+        status: delivery.status,
+        identifiers: {
+          customerId: delivery.customerId,
+          orderId: null,
+          requestId: null,
+          driverId: delivery.driverId,
+          tankerId: delivery.tankerId,
+          siteId: delivery.siteId,
+        },
+        volumeLitres: getDeliveryVolumeLitres(delivery.events),
+        createdAt: delivery.createdAt.toISOString(),
+        updatedAt: delivery.updatedAt.toISOString(),
+        lastEvent: delivery.events[0] ? formatEvent(delivery.events[0]) : null,
+        activeAlertsCount: getActiveAlertsCount(delivery.alerts, candidateAlerts),
+      };
+    }),
+  };
+}
+
 export async function getDeliveryOperationsView(
   deliveryId: string
 ): Promise<DeliveryOperationsView> {
@@ -248,6 +385,55 @@ function buildRiskFlags(alerts: DeliveryAlertCandidate[]) {
     severity: alert.severity,
     message: alert.message,
   }));
+}
+
+function getActiveAlertsCount(
+  unresolvedAlerts: { type: string }[],
+  candidateAlerts: DeliveryAlertCandidate[]
+) {
+  return new Set([
+    ...unresolvedAlerts.map((alert) => alert.type),
+    ...candidateAlerts.map((alert) => alert.type),
+  ]).size;
+}
+
+function getDeliveryVolumeLitres(
+  events: {
+    type: string;
+    metadata: Prisma.JsonValue | null;
+  }[]
+) {
+  for (const event of events) {
+    const metadata = metadataObject(event.metadata);
+    const measurement = metadataObject(metadata.measurement ?? null);
+    const volume =
+      getJsonNumber(measurement.measuredVolumeLiters) ??
+      getJsonNumber(measurement.estimatedDeliveredLitres) ??
+      getJsonNumber(measurement.volumeLitres) ??
+      getJsonNumber(metadata.measuredVolumeLiters) ??
+      getJsonNumber(metadata.estimatedDeliveredLitres) ??
+      getJsonNumber(metadata.volumeLitres);
+
+    if (volume !== null) {
+      return volume;
+    }
+  }
+
+  return null;
+}
+
+function getJsonNumber(value: Prisma.JsonValue | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function metadataObject(value: Prisma.JsonValue | null): Prisma.JsonObject {
+  const sanitized = sanitizeJson(value);
+
+  if (!sanitized || Array.isArray(sanitized) || typeof sanitized !== "object") {
+    return {};
+  }
+
+  return sanitized;
 }
 
 function getSuggestedOperatorAction(

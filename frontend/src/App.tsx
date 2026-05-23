@@ -1,7 +1,7 @@
-import DriverDeliveryControlPanel from './pages/dev/DriverDeliveryControlPanel'
+import OperationsDashboard from './features/operations/OperationsDashboard'
 
 function App() {
-  return <DriverDeliveryControlPanel />
+  return <OperationsDashboard />
 }
 
 export default App

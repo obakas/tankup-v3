@@ -12,7 +12,10 @@ import {
   checkDeliveryAlerts,
   listDeliveryOperationalAlertCandidates,
 } from "../domains/delivery/delivery.alerts.ts";
-import { getDeliveryOperationsView } from "../domains/delivery/delivery.operations.ts";
+import {
+  getDeliveryOperationsView,
+  listOperationsDeliveries,
+} from "../domains/delivery/delivery.operations.ts";
 import { getDeliveryTimeline } from "../domains/delivery/delivery.timeline.ts";
 import {
   listNotifications,
@@ -79,6 +82,12 @@ const driverReasonBodySchema = driverActorBodySchema.extend({
 
 const driverTransitionBodySchema = driverActorBodySchema.extend({
   metadata: metadataSchema.optional(),
+});
+
+const operationsDeliveriesQuerySchema = z.object({
+  status: z.enum(DeliveryStatus).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  search: z.string().trim().min(1).optional(),
 });
 
 devDeliveryRoutes.post("/deliveries/:id/transition", async (req, res) => {
@@ -303,6 +312,25 @@ devDeliveryRoutes.get("/operations/alerts", async (_req, res) => {
     res.json(result);
   } catch (error) {
     handleDeliveryRouteError(error, res, "Unexpected operations alert list error");
+  }
+});
+
+devDeliveryRoutes.get("/operations/deliveries", async (req, res) => {
+  try {
+    const query = operationsDeliveriesQuerySchema.parse(req.query);
+    const result = await listOperationsDeliveries({
+      limit: query.limit,
+      ...(query.status !== undefined ? { status: query.status } : {}),
+      ...(query.search !== undefined ? { search: query.search } : {}),
+    });
+
+    res.json(result);
+  } catch (error) {
+    handleDeliveryRouteError(
+      error,
+      res,
+      "Unexpected operations delivery list error"
+    );
   }
 });
 

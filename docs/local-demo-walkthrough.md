@@ -1,58 +1,87 @@
 # Local Demo Walkthrough
 
-This guide is for running a local TankUp delivery execution demo with the current dev backend, scenario seeder, and frontend Driver Delivery Control Panel.
+This guide runs the current TankUp V3 local demo around the Operations Control Room dashboard and the dev delivery backend.
 
-The backend is the source of truth. The frontend panel only calls the dev driver execution endpoints.
+The backend remains the source of truth. The dashboard reads operational delivery state and calls existing guarded backend operations; it does not create frontend-only delivery transitions.
 
-## 1. Backend Startup
+## Required Environment Variables
 
-Install dependencies once:
+Backend `.env` in `backend/`:
+
+```bash
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE
+PORT=5000
+```
+
+`DATABASE_URL` is required by Prisma and the PostgreSQL adapter. `PORT` is optional; the backend defaults to `5000`.
+
+Frontend `.env.local` in `frontend/`:
+
+```bash
+VITE_API_BASE_URL=http://localhost:5000
+```
+
+`VITE_API_BASE_URL` is optional. If it is not set, the frontend API client falls back to `http://localhost:5000`.
+
+Do not commit real `.env` values.
+
+## Prisma Generate And Migrate Notes
+
+Install backend dependencies first:
 
 ```bash
 cd backend
 npm install
 ```
 
-Create a backend `.env` with the database connection expected by Prisma. At minimum, local demo runs need `DATABASE_URL` pointing at a PostgreSQL database.
-
-Generate the Prisma client:
+Generate Prisma Client after dependency install, schema changes, or a fresh checkout:
 
 ```bash
 cd backend
 npx prisma generate
 ```
 
-Apply the database schema using the repo's normal Prisma workflow for your environment. If the database is already prepared, start the backend:
+Apply migrations to the local demo database:
+
+```bash
+cd backend
+npx prisma migrate deploy
+```
+
+For local development databases where you intentionally want Prisma to run development migrations, use the repo's normal local workflow:
+
+```bash
+cd backend
+npx prisma migrate dev
+```
+
+Do not use local demo commands against a production database.
+
+## Backend Startup Commands
+
+Start the backend:
 
 ```bash
 cd backend
 npm run dev
 ```
 
-By default, the backend listens on:
+Default backend URL:
 
 ```txt
 http://localhost:5000
 ```
 
-If you set a custom `PORT`, use that port in the curl examples below.
+If `PORT` is changed, use the matching port in frontend `VITE_API_BASE_URL` and curl examples.
 
-## 2. Frontend Startup
+## Frontend Startup Commands
 
-Install dependencies once:
+Install frontend dependencies once:
 
 ```bash
 cd frontend
 npm install
 ```
-
-Optionally create `frontend/.env.local`:
-
-```bash
-VITE_API_BASE_URL=http://localhost:5000
-```
-
-If `VITE_API_BASE_URL` is not set, the frontend API client falls back to `http://localhost:5000`.
 
 Start the frontend:
 
@@ -61,26 +90,26 @@ cd frontend
 npm run dev
 ```
 
-Open the Vite URL printed by the command, usually:
+Open the Vite URL printed in the terminal, usually:
 
 ```txt
 http://localhost:5173
 ```
 
-The app currently renders the dev Driver Delivery Control Panel directly.
+The app renders the Operations Control Room dashboard.
 
-## 3. Seeder Execution
+## Scenario Seeding
 
-Run the scenario seeder after the backend database is available:
+Run the scenario seeder after the database schema is ready:
 
 ```bash
 cd backend
 npm run seed:delivery-scenarios
 ```
 
-The seeder deletes previously seeded rows whose `siteId` starts with `seed-delivery-scenario:` and creates fresh rows every run. Delivery IDs change on every seed.
+The seeder removes previous seeded rows whose `siteId` starts with `seed-delivery-scenario:` and creates a fresh scenario set. Delivery IDs change each time.
 
-Copy the delivery IDs printed in the terminal. The output looks like:
+Example output:
 
 ```txt
 Seeded delivery scenarios:
@@ -96,131 +125,54 @@ Seeded delivery scenarios:
 - failed delivery: <delivery-id> (FAILED)
 ```
 
-## 4. Example Delivery IDs To Use
+## Open The Operations Dashboard
 
-Use the IDs printed by the seeder, not the labels themselves.
+1. Start the backend.
+2. Start the frontend.
+3. Open `http://localhost:5173`, or the Vite URL printed by `npm run dev`.
+4. Confirm the dashboard shows `Operations / Control Room`.
 
-| Demo purpose | Scenario label | Starting status |
-| --- | --- | --- |
-| Continue an in-progress delivery | `healthy delivery` | `EN_ROUTE` |
-| Loading alert | `stuck LOADING` | `LOADING` |
-| En-route alert | `stuck EN_ROUTE` | `EN_ROUTE` |
-| Arrival-to-measurement demo | `ARRIVED but not MEASURING` | `ARRIVED` |
-| Measurement submission demo | `MEASURING too long` | `MEASURING` |
-| OTP retry/expiry demo | `AWAITING_OTP too long` | `AWAITING_OTP` |
-| Repeated OTP failure alert | `repeated OTP failures` | `AWAITING_OTP` |
-| Suspicious skip alert | `suspicious SKIPPED` | `SKIPPED` |
-| Completed timeline inspection | `completed delivery` | `COMPLETED` |
-| Failed timeline inspection | `failed delivery` | `FAILED` |
-
-Current limitation: the scenario seeder does not create an `ASSIGNED` delivery. To click through every driver action from the very beginning in the UI, use any local delivery row that is already in `ASSIGNED`. The backend verification script still covers the full status chain from `CREATED` through `AWAITING_OTP`.
-
-## 5. Driver Control Panel Walkthrough
-
-Open the frontend app and use the Driver Delivery Control Panel.
-
-1. Paste a delivery ID into `Delivery ID`.
-2. Leave `Actor ID` as `driver-dev-001`, or change it for a specific manual test.
-3. Use the action buttons in the same order as the delivery's current status allows.
-4. For `Submit Measurement`, fill:
-   - `measuredVolumeLiters`
-   - `measurementNote`
-5. For `Confirm OTP`, paste the OTP returned by `Request OTP`.
-6. Watch:
-   - `Loading`
-   - `Status`
-   - `Latest Event`
-   - `Last Success Response`
-   - `Last Error Response`
-
-Buttons are disabled until a delivery ID is entered. Invalid transitions are expected to return a normalized error response.
-
-## 6. Full Happy-Path Flow
-
-Operationally, the happy path is:
+The dashboard uses these dev endpoints:
 
 ```txt
-ASSIGNED
-→ LOADING
-→ EN_ROUTE
-→ ARRIVED
-→ MEASURING
-→ AWAITING_OTP
-→ DELIVERED
+GET /dev/operations/deliveries
+GET /dev/operations/alerts
+GET /dev/deliveries/:id/operations
+GET /dev/deliveries/:id/timeline
 ```
 
-In the backend status model, the final delivered state is currently stored as:
+## Inspect Deliveries
+
+Use the Live Deliveries Board:
+
+1. Set `Status` to filter by a delivery status, or leave it as all statuses.
+2. Use `Search` to find a delivery, customer, driver, tanker, or site identifier.
+3. Use `Limit` to choose how many deliveries to fetch.
+4. Click `Refresh` to reload the board.
+5. Click a delivery card to open its detail drawer.
+
+The board groups deliveries by status and shows:
+
+- delivery ID,
+- customer/request identifier when available,
+- driver and tanker identifiers,
+- latest event,
+- active alert count,
+- last updated time.
+
+## Inspect Alerts
+
+Use the Operational Alerts panel on the right side of the dashboard.
+
+The panel is powered only by:
 
 ```txt
-COMPLETED
+GET /dev/operations/alerts
 ```
 
-Use this click sequence for a delivery that starts in `ASSIGNED`:
+It polls automatically every 10 seconds. Use `Refresh` for a manual reload.
 
-1. `Start Loading`: `ASSIGNED -> LOADING`
-2. `Start Route`: `LOADING -> EN_ROUTE`
-3. `Arrive`: `EN_ROUTE -> ARRIVED`
-4. `Start Measuring`: `ARRIVED -> MEASURING`
-5. `Submit Measurement`: `MEASURING -> AWAITING_OTP`
-6. `Request OTP`: generates a dev OTP and returns it in `metadata.otpCode`
-7. `Confirm OTP`: verifies the OTP
-8. `Complete Delivery`: completes the delivery
-
-Important actor note: `Complete Delivery` uses existing transition guards. The current guard expects `AWAITING_OTP -> COMPLETED` to be customer-triggered, so curl examples pass `actorType: "CUSTOMER"` for completion. The dev panel defaults to driver actor payloads, so a driver-triggered completion may correctly show an actor-forbidden error.
-
-## 7. Failure-Path Examples
-
-### Invalid Transition
-
-Try clicking an action that does not match the delivery status. For example, paste the `healthy delivery` ID, which starts at `EN_ROUTE`, and click `Start Loading`.
-
-Expected result:
-
-```json
-{
-  "success": false,
-  "code": "INVALID_DELIVERY_TRANSITION"
-}
-```
-
-### OTP Failure
-
-Use a delivery in `AWAITING_OTP`, such as `awaiting OTP too long` or `repeated OTP failures`.
-
-1. Enter an incorrect OTP in the panel.
-2. Click `Confirm OTP`.
-3. Inspect `Last Error Response`.
-
-Expected result:
-
-```json
-{
-  "success": false,
-  "code": "DELIVERY_OTP_INVALID"
-}
-```
-
-### Skipped Delivery
-
-Skip uses existing transition rules and requires a reason. The current driver panel sends a reason, but defaults actor type to `DRIVER`. If the status/actor combination is not allowed, the response should be rejected.
-
-For a successful skip curl example, use `actorType: "FLEET_HEAD"` from an allowed operational status such as `EN_ROUTE`.
-
-### Failed Delivery
-
-Fail also requires a reason and depends on the current transition rules. Use an active operational delivery such as `healthy delivery` or `stuck EN_ROUTE`, then call the fail endpoint with an allowed actor.
-
-After failure, inspect the timeline and operations endpoint to confirm the failure event and audit record.
-
-## 8. Operational Alert Examples
-
-After seeding, call the operations alerts endpoint:
-
-```bash
-curl "$BASE_URL/dev/operations/alerts"
-```
-
-Expected seeded alert candidates:
+Seeded alert scenarios:
 
 | Scenario label | Expected alert |
 | --- | --- |
@@ -232,211 +184,152 @@ Expected seeded alert candidates:
 | `repeated OTP failures` | `REPEATED_OTP_FAILURES` |
 | `suspicious SKIPPED` | `SKIPPED_SUSPICIOUS` |
 
-Persist current alert candidates as events/audit logs:
-
-```bash
-curl -X POST "$BASE_URL/dev/deliveries/check-alerts"
-```
-
-`GET /dev/operations/alerts` computes candidates without persisting events. `POST /dev/deliveries/check-alerts` persists alert events for active operational statuses only.
-
-## 9. Timeline Inspection Examples
-
-Set a delivery ID from the seeder:
+The alerts endpoint computes current candidates. Persisting alert events is a separate backend dev operation:
 
 ```bash
 BASE_URL=http://localhost:5000
-DELIVERY_ID=<seeded-delivery-id>
-```
-
-Inspect the timeline:
-
-```bash
-curl "$BASE_URL/dev/deliveries/$DELIVERY_ID/timeline"
-```
-
-Inspect the operator snapshot:
-
-```bash
-curl "$BASE_URL/dev/deliveries/$DELIVERY_ID/operations"
-```
-
-Good timeline demos:
-
-| Scenario label | What to inspect |
-| --- | --- |
-| `completed delivery` | OTP verification plus completion event |
-| `failed delivery` | Failure event and escalation notification |
-| `repeated OTP failures` | Multiple OTP failure events |
-| `suspicious SKIPPED` | Skip event with missing reason evidence |
-
-Timeline metadata sanitizes OTP codes.
-
-## 10. Example Curl Commands
-
-Set common variables:
-
-```bash
-BASE_URL=http://localhost:5000
-DELIVERY_ID=<delivery-id>
-DRIVER_ID=driver-dev-001
-```
-
-Start loading:
-
-```bash
-curl -X POST "$BASE_URL/dev/deliveries/$DELIVERY_ID/driver/start-loading" \
-  -H "Content-Type: application/json" \
-  -d '{"actorId":"'"$DRIVER_ID"'"}'
-```
-
-Start route:
-
-```bash
-curl -X POST "$BASE_URL/dev/deliveries/$DELIVERY_ID/driver/start-route" \
-  -H "Content-Type: application/json" \
-  -d '{"actorId":"'"$DRIVER_ID"'"}'
-```
-
-Arrive:
-
-```bash
-curl -X POST "$BASE_URL/dev/deliveries/$DELIVERY_ID/driver/arrive" \
-  -H "Content-Type: application/json" \
-  -d '{"actorId":"'"$DRIVER_ID"'"}'
-```
-
-Start measuring:
-
-```bash
-curl -X POST "$BASE_URL/dev/deliveries/$DELIVERY_ID/driver/start-measuring" \
-  -H "Content-Type: application/json" \
-  -d '{"actorId":"'"$DRIVER_ID"'"}'
-```
-
-Submit measurement:
-
-```bash
-curl -X POST "$BASE_URL/dev/deliveries/$DELIVERY_ID/driver/submit-measurement" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "actorId": "'"$DRIVER_ID"'",
-    "measurement": {
-      "measuredVolumeLiters": 12000,
-      "measurementNote": "Dev panel measurement"
-    }
-  }'
-```
-
-Request OTP:
-
-```bash
-curl -X POST "$BASE_URL/dev/deliveries/$DELIVERY_ID/driver/request-otp" \
-  -H "Content-Type: application/json" \
-  -d '{"actorId":"'"$DRIVER_ID"'"}'
-```
-
-Confirm OTP:
-
-```bash
-OTP_CODE=<otp-from-request-otp-response>
-
-curl -X POST "$BASE_URL/dev/deliveries/$DELIVERY_ID/driver/confirm-otp" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "actorId": "'"$DRIVER_ID"'",
-    "otpCode": "'"$OTP_CODE"'"
-  }'
-```
-
-Complete delivery:
-
-```bash
-curl -X POST "$BASE_URL/dev/deliveries/$DELIVERY_ID/driver/complete" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "actorType": "CUSTOMER",
-    "actorId": "customer-dev-001"
-  }'
-```
-
-Fail delivery:
-
-```bash
-curl -X POST "$BASE_URL/dev/deliveries/$DELIVERY_ID/driver/fail" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "actorType": "FLEET_HEAD",
-    "actorId": "fleet-head-dev-001",
-    "reason": "Pump failure during local demo",
-    "metadata": {
-      "reportedBy": "driver"
-    }
-  }'
-```
-
-Skip delivery:
-
-```bash
-curl -X POST "$BASE_URL/dev/deliveries/$DELIVERY_ID/driver/skip" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "actorType": "FLEET_HEAD",
-    "actorId": "fleet-head-dev-001",
-    "reason": "Customer requested skip during local demo"
-  }'
-```
-
-List alert candidates:
-
-```bash
-curl "$BASE_URL/dev/operations/alerts"
-```
-
-Persist alert candidates:
-
-```bash
 curl -X POST "$BASE_URL/dev/deliveries/check-alerts"
 ```
 
-Timeline:
+## Inspect Delivery Drawer
 
-```bash
-curl "$BASE_URL/dev/deliveries/$DELIVERY_ID/timeline"
+Click a delivery card or alert item to open the drawer.
+
+The drawer loads:
+
+```txt
+GET /dev/deliveries/:id/operations
+GET /dev/deliveries/:id/timeline
 ```
 
-Operations view:
+Inspect:
 
-```bash
-curl "$BASE_URL/dev/deliveries/$DELIVERY_ID/operations"
+- current status,
+- driver, tanker, customer, and site identifiers,
+- OTP state,
+- active alerts,
+- latest event metadata,
+- risk flags,
+- chronological timeline.
+
+Use the drawer `Refresh` button after manual backend actions or while demoing status changes.
+
+## Use Drawer Actions Safely
+
+Drawer action buttons call existing dev driver execution endpoints. They do not bypass backend transition rules.
+
+Supported actions:
+
+- `Refresh`: reloads delivery operations and timeline.
+- `Confirm OTP`: available on `AWAITING_OTP` when an OTP is entered.
+- `Complete Delivery`: available only when the drawer sees `AWAITING_OTP` with verified OTP and a customer identifier.
+- `Fail Delivery`: available only for statuses where the UI expects backend failure handling.
+- `Skip Delivery`: available only for statuses where the UI expects backend skip handling.
+
+Fail, skip, and complete show a browser confirmation prompt before sending the request.
+
+After a successful action, the dashboard refreshes:
+
+- selected delivery detail,
+- timeline,
+- deliveries board,
+- alerts panel.
+
+If the backend rejects an action, treat it as expected operational feedback. The UI should show the returned error instead of changing state locally.
+
+## Happy Path Demo Flow
+
+The full backend happy path is:
+
+```txt
+CREATED -> ASSIGNED -> LOADING -> EN_ROUTE -> ARRIVED -> MEASURING -> AWAITING_OTP -> COMPLETED
 ```
 
-## 11. Known Limitations And Dev Assumptions
+The current scenario seeder does not create an `ASSIGNED` delivery for a complete first-step UI walkthrough. For a full happy-path transition demo, use a local delivery already in `ASSIGNED`, or run the backend verification script:
 
-- These are dev endpoints. They are not authenticated.
-- `actorId` is passed manually.
-- Driver endpoints default `actorType` to `DRIVER` when omitted.
-- Some valid operations require a non-driver actor type, such as customer completion or fleet-head skip.
-- Scenario delivery IDs are regenerated every time the seeder runs.
-- The current scenario seeder does not create an `ASSIGNED` delivery for a full UI happy-path from the first driver step.
-- Measurement data is stored in `DeliveryEvent` metadata because there is no dedicated measurement table yet.
-- OTP codes are returned by dev OTP generation/request endpoints for local testing.
-- Timeline and operations views sanitize OTP codes from timeline metadata.
-- `/dev/deliveries/check-alerts` persists alerts for active operational statuses only; suspicious skipped deliveries appear as candidates but are not persisted by that endpoint.
-- Alerts, timelines, operations views, and notifications do not have pagination yet.
-- The final delivered business state is represented by backend status `COMPLETED`.
+```bash
+cd backend
+npm run test:delivery
+```
+
+For a dashboard-focused happy-path inspection:
+
+1. Seed scenarios.
+2. Open the Operations Dashboard.
+3. Search for the `completed delivery` scenario.
+4. Open its drawer.
+5. Inspect the completed status, latest event, and timeline.
+6. Verify the timeline includes OTP verification and completion evidence.
+
+For an OTP/completion action demo on an eligible delivery:
+
+1. Open a delivery in `AWAITING_OTP`.
+2. Enter the OTP code if one is available from dev OTP generation.
+3. Click `Confirm OTP`.
+4. Confirm the drawer refresh shows OTP as verified.
+5. Click `Complete Delivery` only when enabled.
+6. Confirm the drawer refresh shows `COMPLETED`.
+
+## Failure And Alert Demo Flow
+
+Use seeded operational-alert scenarios.
+
+1. Seed scenarios.
+2. Open the Operations Dashboard.
+3. Check the Operational Alerts panel for alert candidates.
+4. Click `stuck EN_ROUTE`, `MEASURING too long`, or `repeated OTP failures`.
+5. Inspect active alerts and the chronological timeline in the drawer.
+6. Use `Fail Delivery` on an allowed active status and confirm the prompt.
+7. Confirm the drawer, board, and alert panel refresh after success.
+
+For skipped-delivery review:
+
+1. Search for `suspicious SKIPPED`.
+2. Open the delivery drawer.
+3. Inspect active alerts and timeline evidence.
+4. Do not expect skip actions on terminal `SKIPPED`; the dashboard should treat it as inspect-only.
+
+## Demo Checklist
+
+- Backend `.env` has `DATABASE_URL`.
+- Prisma Client generated.
+- Database migrations applied.
+- Backend running at `http://localhost:5000`.
+- Frontend running at `http://localhost:5173`.
+- `VITE_API_BASE_URL` points to the backend if the backend port is not `5000`.
+- Scenario seeder completed and printed delivery IDs.
+- Operations board loads deliveries.
+- Alerts panel loads alert candidates.
+- Delivery drawer opens from a delivery card.
+- Drawer refresh works.
+- Safe action prompts appear before fail, skip, and complete.
+- Successful actions refresh drawer, timeline, board, and alerts.
+
+## Known Limitations
+
+- Dev endpoints are unauthenticated.
+- Actor IDs are demo values.
+- Scenario delivery IDs change every seed run.
+- The seeder does not currently create an `ASSIGNED` delivery for a full UI happy path from the first driver step.
+- Some operational actions require actor types such as `CUSTOMER`, `FLEET_HEAD`, or `ADMIN`; backend rules decide what is allowed.
+- OTP codes are exposed by dev flows for local testing only.
+- Measurement volume is derived from delivery event metadata where available; there is no dedicated measurement table yet.
+- `orderId`, `requestId`, and some operational identifiers may be `null` because the current MVP schema does not have dedicated request/order tables.
+- Alerts in `GET /dev/operations/alerts` are computed candidates; `POST /dev/deliveries/check-alerts` is the persistence-oriented dev operation.
+- No production auth, maps, sockets, or alert resolution workflow exists yet.
+- The final delivered operational state is represented as backend status `COMPLETED`.
 
 ## Quick Verification
 
-Backend verification:
+Backend:
 
 ```bash
 cd backend
 npm run typecheck
-npm run test:delivery
+npm run build
 ```
 
-Frontend verification:
+Frontend:
 
 ```bash
 cd frontend
