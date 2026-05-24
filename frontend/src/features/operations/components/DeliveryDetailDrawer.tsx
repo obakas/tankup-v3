@@ -26,6 +26,7 @@ type DeliveryDetailDrawerProps = {
 
 const fieldClass =
   'rounded-md border border-slate-200 p-3 dark:border-slate-800'
+const demoOtpFallback = '000000'
 
 const formatDateTime = (value: string | null) => {
   if (!value) {
@@ -301,6 +302,86 @@ const operatorActor = {
 
 type AssignmentActionName = 'run' | 'refresh' | 'accept' | 'reject'
 
+type DrawerDelivery = NonNullable<
+  ReturnType<typeof useDeliveryOperations>['data']
+>['delivery']
+
+const isAssignmentReadyDelivery = (delivery: DrawerDelivery) =>
+  delivery.status === 'CREATED' &&
+  delivery.tankerId === null &&
+  delivery.driverId === null
+
+const getOperatorNextStep = (
+  delivery: DrawerDelivery,
+  pendingOffer: VisiblePendingOffer | null,
+) => {
+  if (pendingOffer) {
+    return 'Pending tanker offer waiting for accept/reject.'
+  }
+
+  if (isAssignmentReadyDelivery(delivery)) {
+    return 'Run assignment to offer this delivery to an available tanker.'
+  }
+
+  switch (delivery.status) {
+    case 'CREATED':
+      return 'Review assignment readiness before running assignment.'
+    case 'ASSIGNED':
+      return 'Delivery assigned. Continue to driver execution.'
+    case 'LOADING':
+      return 'Tanker is loading.'
+    case 'EN_ROUTE':
+      return 'Tanker is on the way.'
+    case 'ARRIVED':
+      return 'Start measurement.'
+    case 'MEASURING':
+      return 'Complete measurement.'
+    case 'AWAITING_OTP':
+      return 'Confirm customer OTP.'
+    case 'COMPLETED':
+      return 'Delivery completed.'
+    case 'FAILED':
+      return 'Delivery failed. Review operational notes.'
+    case 'SKIPPED':
+      return 'Delivery skipped. Review operational notes.'
+  }
+}
+
+const getDeliveryExecutionAction = (status: DeliveryStatus) => {
+  switch (status) {
+    case 'ASSIGNED':
+      return 'Start loading'
+    case 'LOADING':
+      return 'Depart / mark en route'
+    case 'EN_ROUTE':
+      return 'Mark arrived'
+    case 'ARRIVED':
+      return 'Start measurement'
+    case 'MEASURING':
+      return 'Complete measurement'
+    case 'AWAITING_OTP':
+      return 'Confirm OTP'
+    case 'COMPLETED':
+      return 'Delivery complete'
+    case 'CREATED':
+    case 'FAILED':
+    case 'SKIPPED':
+      return null
+  }
+}
+
+const getSeededDemoOtpCode = (delivery: DrawerDelivery) => {
+  if (delivery.siteId?.endsWith(':site:awaiting-otp-too-long')) {
+    return '482913'
+  }
+
+  if (delivery.siteId?.endsWith(':site:repeated-otp-failures')) {
+    return '771204'
+  }
+
+  return null
+}
+
 const failStatuses: DeliveryStatus[] = [
   'LOADING',
   'EN_ROUTE',
@@ -344,6 +425,17 @@ export default function DeliveryDetailDrawer({
     null,
   )
   const [assignmentError, setAssignmentError] = useState<string | null>(null)
+  const [executionAction, setExecutionAction] = useState<
+    | 'start-loading'
+    | 'start-route'
+    | 'arrive'
+    | 'start-measuring'
+    | 'submit-measurement'
+    | 'confirm-complete'
+    | null
+  >(null)
+  const [executionMessage, setExecutionMessage] = useState<string | null>(null)
+  const [executionError, setExecutionError] = useState<string | null>(null)
   const [countdownNow, setCountdownNow] = useState(() => Date.now())
   const operations = useDeliveryOperations(deliveryId)
   const timeline = useDeliveryTimeline(deliveryId)
@@ -361,7 +453,8 @@ export default function DeliveryDetailDrawer({
     operations.loading ||
     timeline.loading ||
     driverExecution.loading ||
-    Boolean(assignmentAction)
+    Boolean(assignmentAction) ||
+    Boolean(executionAction)
 
   const refresh = useCallback(async () => {
     await Promise.all([operations.refetch(), timeline.refetch()])
@@ -455,10 +548,21 @@ export default function DeliveryDetailDrawer({
     data?.delivery.status === 'AWAITING_OTP' &&
     data.otp.state === 'VERIFIED' &&
     Boolean(data.delivery.customerId)
+  const canStartLoading =
+    data?.delivery.status === 'ASSIGNED' && !busy
+  const canStartRoute = data?.delivery.status === 'LOADING' && !busy
+  const canArrive = data?.delivery.status === 'EN_ROUTE' && !busy
+  const canStartMeasuring = data?.delivery.status === 'ARRIVED' && !busy
+  const canSubmitMeasurement = data?.delivery.status === 'MEASURING' && !busy
+  const canConfirmAndComplete =
+    data?.delivery.status === 'AWAITING_OTP' && !busy
   const hasAssignmentActivity =
     Boolean(assignmentVisibility.pendingOffer) ||
     assignmentVisibility.offerHistory.length > 0 ||
     assignmentVisibility.assignmentDecisions.length > 0
+  const deliveryExecutionAction = data
+    ? getDeliveryExecutionAction(data.delivery.status)
+    : null
 
   const handleFail = () => {
     if (!deliveryId || !confirmDangerousAction('failure')) {
@@ -527,6 +631,195 @@ export default function DeliveryDetailDrawer({
         }),
       'Delivery completed.',
     )
+  }
+
+  const handleStartLoading = () => {
+    if (!deliveryId || data?.delivery.status !== 'ASSIGNED') {
+      return
+    }
+
+    setExecutionAction('start-loading')
+    setExecutionMessage(null)
+    setExecutionError(null)
+
+    void (async () => {
+      const response = await driverExecution.startLoading(deliveryId, {
+        actorType: 'DRIVER',
+        actorId: data.delivery.driverId ?? 'operations-control-room',
+      })
+
+      if (!response.success) {
+        setExecutionError(response.error)
+        setExecutionAction(null)
+        return
+      }
+
+      setExecutionMessage('Loading started.')
+      await refreshAfterAction()
+      setExecutionAction(null)
+    })()
+  }
+
+  const handleStartRoute = () => {
+    if (!deliveryId || data?.delivery.status !== 'LOADING') {
+      return
+    }
+
+    setExecutionAction('start-route')
+    setExecutionMessage(null)
+    setExecutionError(null)
+
+    void (async () => {
+      const response = await driverExecution.startRoute(deliveryId, {
+        actorType: 'DRIVER',
+        actorId: data.delivery.driverId ?? 'operations-control-room',
+      })
+
+      if (!response.success) {
+        setExecutionError(response.error)
+        setExecutionAction(null)
+        return
+      }
+
+      setExecutionMessage('Delivery marked en route.')
+      await refreshAfterAction()
+      setExecutionAction(null)
+    })()
+  }
+
+  const handleArrive = () => {
+    if (!deliveryId || data?.delivery.status !== 'EN_ROUTE') {
+      return
+    }
+
+    setExecutionAction('arrive')
+    setExecutionMessage(null)
+    setExecutionError(null)
+
+    void (async () => {
+      const response = await driverExecution.arrive(deliveryId, {
+        actorType: 'DRIVER',
+        actorId: data.delivery.driverId ?? 'operations-control-room',
+      })
+
+      if (!response.success) {
+        setExecutionError(response.error)
+        setExecutionAction(null)
+        return
+      }
+
+      setExecutionMessage('Driver arrival recorded.')
+      await refreshAfterAction()
+      setExecutionAction(null)
+    })()
+  }
+
+  const handleStartMeasuring = () => {
+    if (!deliveryId || data?.delivery.status !== 'ARRIVED') {
+      return
+    }
+
+    setExecutionAction('start-measuring')
+    setExecutionMessage(null)
+    setExecutionError(null)
+
+    void (async () => {
+      const response = await driverExecution.startMeasuring(deliveryId, {
+        actorType: 'DRIVER',
+        actorId: data.delivery.driverId ?? 'operations-control-room',
+      })
+
+      if (!response.success) {
+        setExecutionError(response.error)
+        setExecutionAction(null)
+        return
+      }
+
+      setExecutionMessage('Measurement started.')
+      await refreshAfterAction()
+      setExecutionAction(null)
+    })()
+  }
+
+  const handleSubmitMeasurement = () => {
+    if (!deliveryId || data?.delivery.status !== 'MEASURING') {
+      return
+    }
+
+    setExecutionAction('submit-measurement')
+    setExecutionMessage(null)
+    setExecutionError(null)
+
+    void (async () => {
+      const response = await driverExecution.submitMeasurement(deliveryId, {
+        actorType: 'DRIVER',
+        actorId: data.delivery.driverId ?? 'operations-control-room',
+        measurement: {
+          source: 'operations_dashboard_demo',
+          volumeLitres: 12_000,
+        },
+      })
+
+      if (!response.success) {
+        setExecutionError(response.error)
+        setExecutionAction(null)
+        return
+      }
+
+      setExecutionMessage('Measurement completed.')
+      await refreshAfterAction()
+      setExecutionAction(null)
+    })()
+  }
+
+  const handleConfirmAndComplete = () => {
+    if (!deliveryId || data?.delivery.status !== 'AWAITING_OTP') {
+      return
+    }
+
+    const nextOtpCode =
+      otpCode.trim() || getSeededDemoOtpCode(data.delivery) || demoOtpFallback
+    const customerId = data.delivery.customerId ?? 'operations-control-room'
+
+    setExecutionAction('confirm-complete')
+    setExecutionMessage(null)
+    setExecutionError(null)
+
+    void (async () => {
+      if (data.otp.state !== 'VERIFIED') {
+        const otpResponse = await driverExecution.confirmOtp(deliveryId, {
+          actorType: 'CUSTOMER',
+          actorId: customerId,
+          otpCode: nextOtpCode,
+        })
+
+        if (!otpResponse.success) {
+          setExecutionError(otpResponse.error)
+          setExecutionAction(null)
+          return
+        }
+      }
+
+      const completeResponse = await driverExecution.completeDelivery(deliveryId, {
+        actorType: 'CUSTOMER',
+        actorId: customerId,
+      })
+
+      if (!completeResponse.success) {
+        setExecutionError(completeResponse.error)
+        setExecutionAction(null)
+        return
+      }
+
+      setExecutionMessage(
+        nextOtpCode === demoOtpFallback
+          ? 'Delivery completed using demo OTP fallback.'
+          : 'OTP confirmed and delivery completed.',
+      )
+      setOtpCode('')
+      await refreshAfterAction()
+      setExecutionAction(null)
+    })()
   }
 
   const handleAssignmentRefresh = () => {
@@ -687,6 +980,18 @@ export default function DeliveryDetailDrawer({
               </div>
             </section>
 
+            <section className="rounded-md border border-cyan-200 bg-cyan-50 p-4 dark:border-cyan-800 dark:bg-cyan-950/30">
+              <p className="text-xs font-semibold uppercase tracking-normal text-cyan-800 dark:text-cyan-200">
+                Operator Next Step
+              </p>
+              <p className="mt-2 text-sm font-semibold text-cyan-950 dark:text-cyan-50">
+                {getOperatorNextStep(
+                  data.delivery,
+                  assignmentVisibility.pendingOffer,
+                )}
+              </p>
+            </section>
+
             <section className="rounded-md border border-slate-200 dark:border-slate-800 p-4">
               <h3 className="text-sm font-semibold uppercase tracking-normal text-slate-500 dark:text-slate-400">
                 Operator Action
@@ -823,6 +1128,117 @@ export default function DeliveryDetailDrawer({
                 </p>
               </div>
             </section>
+
+            {deliveryExecutionAction ? (
+              <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-normal text-emerald-800 dark:text-emerald-200">
+                      Continue Delivery Execution
+                    </p>
+                    <p className="mt-2 text-sm text-emerald-950 dark:text-emerald-50">
+                      Next operational action for this delivery.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100">
+                    {data.delivery.status}
+                  </span>
+                </div>
+
+                <button
+                  className="mt-3 w-full rounded-md bg-emerald-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-emerald-500 dark:text-emerald-950 dark:hover:bg-emerald-400 sm:w-auto"
+                  disabled={
+                    !canStartLoading &&
+                    !canStartRoute &&
+                    !canArrive &&
+                    !canStartMeasuring &&
+                    !canSubmitMeasurement &&
+                    !canConfirmAndComplete
+                  }
+                  onClick={
+                    canStartLoading
+                      ? handleStartLoading
+                      : canStartRoute
+                        ? handleStartRoute
+                        : canArrive
+                          ? handleArrive
+                          : canStartMeasuring
+                            ? handleStartMeasuring
+                            : canSubmitMeasurement
+                              ? handleSubmitMeasurement
+                              : canConfirmAndComplete
+                                ? handleConfirmAndComplete
+                          : undefined
+                  }
+                  type="button"
+                >
+                  {executionAction === 'start-loading'
+                    ? 'Starting loading'
+                    : executionAction === 'start-route'
+                      ? 'Marking en route'
+                    : executionAction === 'arrive'
+                      ? 'Marking arrived'
+                    : executionAction === 'start-measuring'
+                      ? 'Starting measurement'
+                    : executionAction === 'submit-measurement'
+                      ? 'Completing measurement'
+                    : executionAction === 'confirm-complete'
+                      ? 'Confirming OTP'
+                    : deliveryExecutionAction}
+                </button>
+
+                <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-100">
+                  Execution actions will be connected to backend driver endpoints next.
+                </p>
+
+                {executionMessage ? (
+                  <div className="mt-3 rounded-md border border-emerald-200 bg-white p-2 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-100">
+                    {executionMessage}
+                  </div>
+                ) : null}
+
+                {executionError ? (
+                  <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
+                    {executionError}
+                  </div>
+                ) : null}
+
+                <div className="mt-3 grid gap-2 text-xs text-emerald-950 dark:text-emerald-50 sm:grid-cols-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold uppercase tracking-normal text-emerald-700 dark:text-emerald-200">
+                      Tanker
+                    </p>
+                    <p className="mt-1 truncate font-mono">
+                      {data.delivery.tankerId ?? 'Unassigned'}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold uppercase tracking-normal text-emerald-700 dark:text-emerald-200">
+                      Driver
+                    </p>
+                    <p className="mt-1 truncate font-mono">
+                      {data.delivery.driverId ?? 'Unassigned'}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold uppercase tracking-normal text-emerald-700 dark:text-emerald-200">
+                      Delivery
+                    </p>
+                    <p className="mt-1 truncate font-mono">
+                      {data.delivery.id}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold uppercase tracking-normal text-emerald-700 dark:text-emerald-200">
+                      Customer
+                    </p>
+                    <p className="mt-1 truncate font-mono">
+                      {data.delivery.customerId ?? 'Unknown'}
+                    </p>
+                  </div>
+                </div>
+              </section>
+            ) : null}
 
             <section className="rounded-md border border-slate-200 dark:border-slate-800 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">

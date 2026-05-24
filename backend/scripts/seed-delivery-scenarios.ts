@@ -6,6 +6,7 @@ import {
   NotificationPriority,
   OperationalAlertSeverity,
   Prisma,
+  TankerAvailabilityStatus,
 } from "@prisma/client";
 import { prisma } from "../src/lib/prisma.ts";
 import { DeliveryEventType } from "../src/domains/delivery/delivery.events.ts";
@@ -53,6 +54,10 @@ type DeliveryScenario = {
   key: string;
   label: string;
   status: DeliveryStatus;
+  customerId?: string | null;
+  driverId?: string | null;
+  tankerId?: string | null;
+  siteId?: string | null;
   createdMinutesAgo: number;
   updatedMinutesAgo: number;
   otpAttemptCount?: number;
@@ -86,6 +91,8 @@ async function main() {
     summaries.push(summary);
   }
 
+  const assignmentTanker = await ensureAssignmentReadyTanker();
+
   console.log(
     `Cleared ${clearedCount} existing demo delivery scenario${
       clearedCount === 1 ? "" : "s"
@@ -97,6 +104,9 @@ async function main() {
       `- ${summary.label}: ${summary.deliveryId} (${summary.status})`
     );
   }
+  console.log(
+    `Ensured assignment-ready tanker: ${assignmentTanker.id} (${assignmentTanker.availabilityStatus})`
+  );
   console.log("Seeded delivery scenario IDs:");
   console.log(JSON.stringify(groupSummariesByScenarioName(summaries), null, 2));
 }
@@ -118,6 +128,20 @@ async function clearExistingSeedData() {
 
   await prisma.$transaction([
     prisma.notification.deleteMany({
+      where: {
+        deliveryId: {
+          in: deliveryIds,
+        },
+      },
+    }),
+    prisma.assignmentDecision.deleteMany({
+      where: {
+        deliveryId: {
+          in: deliveryIds,
+        },
+      },
+    }),
+    prisma.jobOffer.deleteMany({
       where: {
         deliveryId: {
           in: deliveryIds,
@@ -163,10 +187,22 @@ async function createScenario(
   const delivery = await prisma.delivery.create({
     data: {
       status: scenario.status,
-      customerId: `${SEED_PREFIX}:customer:${scenario.key}`,
-      driverId: `${SEED_PREFIX}:driver:${scenario.key}`,
-      tankerId: `${SEED_PREFIX}:tanker:${scenario.key}`,
-      siteId: `${SEED_PREFIX}:site:${scenario.key}`,
+      customerId:
+        scenario.customerId === undefined
+          ? `${SEED_PREFIX}:customer:${scenario.key}`
+          : scenario.customerId,
+      driverId:
+        scenario.driverId === undefined
+          ? `${SEED_PREFIX}:driver:${scenario.key}`
+          : scenario.driverId,
+      tankerId:
+        scenario.tankerId === undefined
+          ? `${SEED_PREFIX}:tanker:${scenario.key}`
+          : scenario.tankerId,
+      siteId:
+        scenario.siteId === undefined
+          ? `${SEED_PREFIX}:site:${scenario.key}`
+          : scenario.siteId,
       otpCode: scenario.otpCode ?? null,
       otpExpiresAt:
         scenario.otpExpiresMinutesAgo === undefined ||
@@ -292,8 +328,40 @@ function groupSummariesByScenarioName(summaries: ScenarioSummary[]) {
   );
 }
 
+function ensureAssignmentReadyTanker() {
+  return prisma.tanker.upsert({
+    where: {
+      id: `${SEED_PREFIX}:tanker:assignment-ready-available`,
+    },
+    create: {
+      id: `${SEED_PREFIX}:tanker:assignment-ready-available`,
+      label: "Assignment Ready Demo Tanker",
+      driverId: `${SEED_PREFIX}:driver:assignment-ready-available`,
+      fleetId: `${SEED_PREFIX}:fleet:assignment-ready`,
+      capacityLiters: 12_000,
+      availabilityStatus: TankerAvailabilityStatus.AVAILABLE,
+    },
+    update: {
+      availabilityStatus: TankerAvailabilityStatus.AVAILABLE,
+    },
+  });
+}
+
 function buildScenarios(): DeliveryScenario[] {
   return [
+    {
+      key: "assignment-ready",
+      label: "assignment-ready CREATED",
+      status: DeliveryStatus.CREATED,
+      customerId: "demo-customer-assignment-ready",
+      driverId: null,
+      tankerId: null,
+      siteId: `${SEED_PREFIX}:site:assignment-ready`,
+      createdMinutesAgo: 8,
+      updatedMinutesAgo: 8,
+      events: [],
+      audits: [],
+    },
     {
       key: "healthy-delivery",
       label: "healthy delivery",

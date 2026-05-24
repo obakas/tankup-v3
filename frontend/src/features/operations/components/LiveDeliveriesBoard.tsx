@@ -105,6 +105,11 @@ const getAssignmentLabel = (delivery: OperationsDeliveryListItem) => {
   return null
 }
 
+const isAssignmentReadyDelivery = (delivery: OperationsDeliveryListItem) =>
+  delivery.status === 'CREATED' &&
+  delivery.identifiers.tankerId === null &&
+  delivery.identifiers.driverId === null
+
 const filterDeliveriesByDemoVisibility = (
   deliveries: OperationsDeliveryListItem[],
   demoVisibility: DemoVisibility,
@@ -364,6 +369,7 @@ export default function LiveDeliveriesBoard({
                 {groupedDeliveries[deliveryStatus].map((delivery) => {
                   const selected = selectedDeliveryId === delivery.id
                   const assignmentLabel = getAssignmentLabel(delivery)
+                  const assignmentReady = isAssignmentReadyDelivery(delivery)
 
                   return (
                     <button
@@ -381,6 +387,11 @@ export default function LiveDeliveriesBoard({
                             {delivery.isDemoScenario ? (
                               <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950/50 dark:text-cyan-200">
                                 Demo
+                              </span>
+                            ) : null}
+                            {assignmentReady ? (
+                              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                                Assignment Ready
                               </span>
                             ) : null}
                             {assignmentLabel ? (
