@@ -1,4 +1,11 @@
-import { type ActorType, DeliveryStatus, Prisma } from "@prisma/client";
+import {
+  type ActorType,
+  type AssignmentDecisionResult,
+  DeliveryStatus,
+  OfferStatus,
+  type OfferStatus as JobOfferStatus,
+  Prisma,
+} from "@prisma/client";
 import { prisma } from "../../lib/prisma.ts";
 import { DeliveryNotFoundError } from "./delivery.errors.ts";
 import {
@@ -6,6 +13,9 @@ import {
   type DeliveryAlertCandidate,
 } from "./delivery.alerts.ts";
 import { DeliveryEventType } from "./delivery.events.ts";
+
+const DEMO_SCENARIO_SITE_ID_PREFIX = "seed-delivery-scenario:site:";
+const ASSIGNMENT_VISIBILITY_LIMIT = 10;
 
 type OperationsEvent = {
   id: string;
@@ -40,6 +50,44 @@ type OperationsRiskFlag = {
   message: string;
 };
 
+type AssignmentPendingOffer = {
+  id: string;
+  tankerId: string;
+  deliveryId: string;
+  score: number;
+  reason: string | null;
+  expiresAt: string;
+  createdAt: string;
+};
+
+type AssignmentOfferHistoryItem = {
+  id: string;
+  tankerId: string;
+  status: JobOfferStatus;
+  score: number;
+  reason: string | null;
+  expiresAt: string;
+  respondedAt: string | null;
+  createdAt: string;
+};
+
+type AssignmentDecisionItem = {
+  id: string;
+  result: AssignmentDecisionResult;
+  tankerId: string;
+  score: number | null;
+  reason: string | null;
+  createdAt: string;
+};
+
+type OperationsAssignmentVisibility = {
+  pendingOffer: AssignmentPendingOffer | null;
+  offerHistory: AssignmentOfferHistoryItem[];
+  assignmentDecisions: AssignmentDecisionItem[];
+  retryCount: number;
+  lastAssignmentDecision: AssignmentDecisionItem | null;
+};
+
 export type DeliveryOperationsView = {
   delivery: {
     id: string;
@@ -67,6 +115,7 @@ export type DeliveryOperationsView = {
     unresolved: OperationsAlert[];
     candidates: DeliveryAlertCandidate[];
   };
+  assignment: OperationsAssignmentVisibility;
   riskFlags: OperationsRiskFlag[];
   suggestedOperatorAction: string;
   generatedAt: string;
@@ -93,7 +142,10 @@ export type OperationsDeliveryListItem = {
   createdAt: string;
   updatedAt: string;
   lastEvent: OperationsEvent | null;
+  assignment: OperationsAssignmentVisibility;
   activeAlertsCount: number;
+  isDemoScenario: boolean;
+  demoScenarioName: string | null;
 };
 
 export type OperationsDeliveriesList = {
@@ -175,6 +227,52 @@ export async function listOperationsDeliveries(
           resolvedAt: true,
         },
       },
+      jobOffers: {
+        orderBy: { createdAt: "desc" },
+        take: ASSIGNMENT_VISIBILITY_LIMIT,
+        select: {
+          id: true,
+          deliveryId: true,
+          tankerId: true,
+          status: true,
+          score: true,
+          reason: true,
+          expiresAt: true,
+          respondedAt: true,
+          createdAt: true,
+        },
+      },
+      assignmentDecisions: {
+        orderBy: { createdAt: "desc" },
+        take: ASSIGNMENT_VISIBILITY_LIMIT,
+        select: {
+          id: true,
+          result: true,
+          tankerId: true,
+          reason: true,
+          createdAt: true,
+          jobOffer: {
+            select: {
+              score: true,
+            },
+          },
+        },
+      },
+      _count: {
+        select: {
+          jobOffers: {
+            where: {
+              status: {
+                in: [
+                  OfferStatus.REJECTED,
+                  OfferStatus.EXPIRED,
+                  OfferStatus.CANCELLED,
+                ],
+              },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -203,7 +301,10 @@ export async function listOperationsDeliveries(
         createdAt: delivery.createdAt.toISOString(),
         updatedAt: delivery.updatedAt.toISOString(),
         lastEvent: delivery.events[0] ? formatEvent(delivery.events[0]) : null,
+        assignment: formatAssignmentVisibility(delivery),
         activeAlertsCount: getActiveAlertsCount(delivery.alerts, candidateAlerts),
+        isDemoScenario: isDemoScenarioSiteId(delivery.siteId),
+        demoScenarioName: getDemoScenarioName(delivery.siteId),
       };
     }),
   };
@@ -264,6 +365,52 @@ export async function getDeliveryOperationsView(
           resolvedAt: true,
         },
       },
+      jobOffers: {
+        orderBy: { createdAt: "desc" },
+        take: ASSIGNMENT_VISIBILITY_LIMIT,
+        select: {
+          id: true,
+          deliveryId: true,
+          tankerId: true,
+          status: true,
+          score: true,
+          reason: true,
+          expiresAt: true,
+          respondedAt: true,
+          createdAt: true,
+        },
+      },
+      assignmentDecisions: {
+        orderBy: { createdAt: "desc" },
+        take: ASSIGNMENT_VISIBILITY_LIMIT,
+        select: {
+          id: true,
+          result: true,
+          tankerId: true,
+          reason: true,
+          createdAt: true,
+          jobOffer: {
+            select: {
+              score: true,
+            },
+          },
+        },
+      },
+      _count: {
+        select: {
+          jobOffers: {
+            where: {
+              status: {
+                in: [
+                  OfferStatus.REJECTED,
+                  OfferStatus.EXPIRED,
+                  OfferStatus.CANCELLED,
+                ],
+              },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -310,6 +457,7 @@ export async function getDeliveryOperationsView(
       })),
       candidates: candidateAlerts,
     },
+    assignment: formatAssignmentVisibility(delivery),
     riskFlags,
     suggestedOperatorAction: getSuggestedOperatorAction(
       delivery.status,
@@ -354,6 +502,113 @@ function formatAuditLog(auditLog: {
     reason: auditLog.reason,
     metadata: sanitizeJson(auditLog.metadata),
     createdAt: auditLog.createdAt.toISOString(),
+  };
+}
+
+function formatAssignmentVisibility(input: {
+  jobOffers: {
+    id: string;
+    deliveryId: string;
+    tankerId: string;
+    status: JobOfferStatus;
+    score: number;
+    reason: string | null;
+    expiresAt: Date;
+    respondedAt: Date | null;
+    createdAt: Date;
+  }[];
+  assignmentDecisions: {
+    id: string;
+    result: AssignmentDecisionResult;
+    tankerId: string;
+    reason: string | null;
+    createdAt: Date;
+    jobOffer: {
+      score: number;
+    };
+  }[];
+  _count: {
+    jobOffers: number;
+  };
+}): OperationsAssignmentVisibility {
+  const offerHistory = input.jobOffers
+    .slice(0, ASSIGNMENT_VISIBILITY_LIMIT)
+    .map(formatAssignmentOfferHistoryItem);
+  const pendingOffer =
+    input.jobOffers.find((offer) => offer.status === OfferStatus.PENDING) ??
+    null;
+  const assignmentDecisions = input.assignmentDecisions
+    .slice(0, ASSIGNMENT_VISIBILITY_LIMIT)
+    .map(formatAssignmentDecision);
+
+  return {
+    pendingOffer: pendingOffer ? formatPendingAssignmentOffer(pendingOffer) : null,
+    offerHistory,
+    assignmentDecisions,
+    retryCount: input._count.jobOffers,
+    lastAssignmentDecision: assignmentDecisions[0] ?? null,
+  };
+}
+
+function formatPendingAssignmentOffer(offer: {
+  id: string;
+  deliveryId: string;
+  tankerId: string;
+  score: number;
+  reason: string | null;
+  expiresAt: Date;
+  createdAt: Date;
+}): AssignmentPendingOffer {
+  return {
+    id: offer.id,
+    tankerId: offer.tankerId,
+    deliveryId: offer.deliveryId,
+    score: offer.score,
+    reason: offer.reason,
+    expiresAt: offer.expiresAt.toISOString(),
+    createdAt: offer.createdAt.toISOString(),
+  };
+}
+
+function formatAssignmentOfferHistoryItem(offer: {
+  id: string;
+  tankerId: string;
+  status: JobOfferStatus;
+  score: number;
+  reason: string | null;
+  expiresAt: Date;
+  respondedAt: Date | null;
+  createdAt: Date;
+}): AssignmentOfferHistoryItem {
+  return {
+    id: offer.id,
+    tankerId: offer.tankerId,
+    status: offer.status,
+    score: offer.score,
+    reason: offer.reason,
+    expiresAt: offer.expiresAt.toISOString(),
+    respondedAt: offer.respondedAt?.toISOString() ?? null,
+    createdAt: offer.createdAt.toISOString(),
+  };
+}
+
+function formatAssignmentDecision(decision: {
+  id: string;
+  result: AssignmentDecisionResult;
+  tankerId: string;
+  reason: string | null;
+  createdAt: Date;
+  jobOffer: {
+    score: number;
+  };
+}): AssignmentDecisionItem {
+  return {
+    id: decision.id,
+    result: decision.result,
+    tankerId: decision.tankerId,
+    score: decision.jobOffer.score,
+    reason: decision.reason,
+    createdAt: decision.createdAt.toISOString(),
   };
 }
 
@@ -424,6 +679,20 @@ function getDeliveryVolumeLitres(
 
 function getJsonNumber(value: Prisma.JsonValue | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function isDemoScenarioSiteId(siteId: string | null) {
+  return siteId?.startsWith(DEMO_SCENARIO_SITE_ID_PREFIX) ?? false;
+}
+
+function getDemoScenarioName(siteId: string | null) {
+  if (!siteId?.startsWith(DEMO_SCENARIO_SITE_ID_PREFIX)) {
+    return null;
+  }
+
+  const scenarioKey = siteId.slice(DEMO_SCENARIO_SITE_ID_PREFIX.length);
+
+  return scenarioKey.trim() ? scenarioKey.replaceAll("-", " ") : null;
 }
 
 function metadataObject(value: Prisma.JsonValue | null): Prisma.JsonObject {

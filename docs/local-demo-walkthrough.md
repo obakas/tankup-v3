@@ -100,18 +100,21 @@ The app renders the Operations Control Room dashboard.
 
 ## Scenario Seeding
 
-Run the scenario seeder after the database schema is ready:
+Run the reset/reseed command after the database schema is ready:
 
 ```bash
 cd backend
-npm run seed:delivery-scenarios
+npm run demo:reset
 ```
 
-The seeder removes previous seeded rows whose `siteId` starts with `seed-delivery-scenario:` and creates a fresh scenario set. Delivery IDs change each time.
+The command removes previous demo scenario deliveries whose `siteId` starts with `seed-delivery-scenario:` and creates a fresh scenario set. It does not delete unrelated delivery data. Delivery IDs change each time.
+
+`npm run seed:delivery-scenarios` is kept as an equivalent lower-level command.
 
 Example output:
 
 ```txt
+Cleared 10 existing demo delivery scenarios.
 Seeded delivery scenarios:
 - healthy delivery: <delivery-id> (EN_ROUTE)
 - stuck LOADING: <delivery-id> (LOADING)
@@ -123,6 +126,14 @@ Seeded delivery scenarios:
 - suspicious SKIPPED: <delivery-id> (SKIPPED)
 - completed delivery: <delivery-id> (COMPLETED)
 - failed delivery: <delivery-id> (FAILED)
+Seeded delivery scenario IDs:
+{
+  "healthy delivery": {
+    "key": "healthy-delivery",
+    "deliveryId": "<delivery-id>",
+    "status": "EN_ROUTE"
+  }
+}
 ```
 
 ## Open The Operations Dashboard
@@ -297,7 +308,7 @@ For skipped-delivery review:
 - Backend running at `http://localhost:5000`.
 - Frontend running at `http://localhost:5173`.
 - `VITE_API_BASE_URL` points to the backend if the backend port is not `5000`.
-- Scenario seeder completed and printed delivery IDs.
+- `npm run demo:reset` completed and printed delivery IDs.
 - Operations board loads deliveries.
 - Alerts panel loads alert candidates.
 - Delivery drawer opens from a delivery card.
@@ -309,7 +320,7 @@ For skipped-delivery review:
 
 - Dev endpoints are unauthenticated.
 - Actor IDs are demo values.
-- Scenario delivery IDs change every seed run.
+- Scenario delivery IDs change every reset/reseed run.
 - The seeder does not currently create an `ASSIGNED` delivery for a full UI happy path from the first driver step.
 - Some operational actions require actor types such as `CUSTOMER`, `FLEET_HEAD`, or `ADMIN`; backend rules decide what is allowed.
 - OTP codes are exposed by dev flows for local testing only.

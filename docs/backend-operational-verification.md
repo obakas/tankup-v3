@@ -159,13 +159,17 @@ Returns a newest-updated-first delivery list for the Operations Control Room boa
         "metadata": {},
         "createdAt": "2026-05-21T00:00:00.000Z"
       },
-      "activeAlertsCount": 1
+      "activeAlertsCount": 1,
+      "isDemoScenario": true,
+      "demoScenarioName": "en route too long"
     }
   ]
 }
 ```
 
 `orderId`, `requestId`, and `volumeLitres` are nullable because the current MVP delivery model does not have dedicated order/request/volume columns. `volumeLitres` is populated when measurement volume appears in delivery event metadata.
+
+`isDemoScenario` and `demoScenarioName` are derived from the seeded demo marker in `siteId` when it starts with `seed-delivery-scenario:site:`. Non-demo deliveries return `false` and `null`.
 
 ### `GET /dev/deliveries/:id/timeline`
 

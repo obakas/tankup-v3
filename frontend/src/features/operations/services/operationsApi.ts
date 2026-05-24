@@ -1,9 +1,24 @@
-import { apiGet } from '../../../api/client'
-import type { ActorType, DeliveryStatus, JsonValue } from '../../../types/delivery'
+import { apiGet, apiRequest } from '../../../api/client'
+import type {
+  ActorType,
+  ApiSuccess,
+  Delivery,
+  DeliveryStatus,
+  JsonValue,
+} from '../../../types/delivery'
 
 export type AlertSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
 
 export type OtpState = 'NOT_GENERATED' | 'PENDING' | 'EXPIRED' | 'VERIFIED'
+
+export type OfferStatus =
+  | 'PENDING'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'EXPIRED'
+  | 'CANCELLED'
+
+export type AssignmentDecisionResult = 'ACCEPTED' | 'REJECTED' | 'EXPIRED'
 
 export type DeliveryAlertCandidate = {
   deliveryId: string
@@ -53,6 +68,63 @@ export type OperationsRiskFlag = {
   message: string
 }
 
+export type AssignmentPendingOffer = {
+  id: string
+  deliveryId: string
+  tankerId: string
+  score: number | null
+  reason: string | null
+  expiresAt: string | null
+  createdAt: string
+}
+
+export type AssignmentOfferHistoryItem = {
+  id: string
+  tankerId: string
+  status: OfferStatus
+  score: number | null
+  reason: string | null
+  expiresAt: string | null
+  respondedAt: string | null
+  createdAt: string
+}
+
+export type AssignmentDecisionSummary = {
+  id: string
+  tankerId: string | null
+  score: number | null
+  result: AssignmentDecisionResult
+  reason: string | null
+  createdAt: string
+}
+
+export type AssignmentVisibility = {
+  pendingOffer: AssignmentPendingOffer | null
+  offerHistory: AssignmentOfferHistoryItem[]
+  assignmentDecisions: AssignmentDecisionSummary[]
+  retryCount: number
+  lastAssignmentDecision: AssignmentDecisionSummary | null
+}
+
+export type AssignmentActorPayload = {
+  actorType?: ActorType
+  actorId?: string
+  reason?: string
+}
+
+export type RunAssignmentPayload = AssignmentActorPayload & {
+  deliveryId: string
+  expiresInMinutes?: number
+}
+
+export type AssignmentActionResponse = ApiSuccess<null> & {
+  offer?: AssignmentOfferHistoryItem
+  decision?: AssignmentDecisionSummary
+  delivery?: Delivery
+  offerId?: string
+  eventId?: string
+}
+
 export type DeliveryOperationsView = {
   delivery: {
     id: string
@@ -80,6 +152,7 @@ export type DeliveryOperationsView = {
     unresolved: OperationsStoredAlert[]
     candidates: DeliveryAlertCandidate[]
   }
+  assignment?: AssignmentVisibility | null
   riskFlags: OperationsRiskFlag[]
   suggestedOperatorAction: string
   generatedAt: string
@@ -128,7 +201,10 @@ export type OperationsDeliveryListItem = {
   createdAt: string
   updatedAt: string
   lastEvent: OperationsEvent | null
+  assignment?: AssignmentVisibility | null
   activeAlertsCount: number
+  isDemoScenario: boolean
+  demoScenarioName: string | null
 }
 
 export type OperationsDeliveriesFilters = {
@@ -184,4 +260,39 @@ export const getDeliveryOperations = (deliveryId: string) =>
 export const getDeliveryTimeline = (deliveryId: string) =>
   apiGet<DeliveryTimeline>(
     `/dev/deliveries/${encodeURIComponent(deliveryId)}/timeline`,
+  )
+
+export const runAssignment = (payload: RunAssignmentPayload) =>
+  apiRequest<AssignmentActionResponse>('/dev/assignments/run', {
+    method: 'POST',
+    body: payload,
+  })
+
+export const getIncomingOfferForTanker = (tankerId: string) =>
+  apiGet<{ success: true; offer: AssignmentOfferHistoryItem | null }>(
+    `/dev/tankers/${encodeURIComponent(tankerId)}/incoming-offer`,
+  )
+
+export const acceptOffer = (
+  offerId: string,
+  payload: AssignmentActorPayload = {},
+) =>
+  apiRequest<AssignmentActionResponse>(
+    `/dev/offers/${encodeURIComponent(offerId)}/accept`,
+    {
+      method: 'POST',
+      body: payload,
+    },
+  )
+
+export const rejectOffer = (
+  offerId: string,
+  payload: AssignmentActorPayload = {},
+) =>
+  apiRequest<AssignmentActionResponse>(
+    `/dev/offers/${encodeURIComponent(offerId)}/reject`,
+    {
+      method: 'POST',
+      body: payload,
+    },
   )

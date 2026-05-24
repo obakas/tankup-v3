@@ -57,6 +57,26 @@ enum NotificationStatus {
   READ
 }
 
+enum TankerAvailabilityStatus {
+  AVAILABLE
+  ASSIGNED
+  UNAVAILABLE
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum AssignmentDecisionResult {
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
 model Delivery {
   id                        String         @id @default(uuid())
   status                    DeliveryStatus @default(CREATED)
@@ -78,6 +98,64 @@ model Delivery {
   auditLogs                 AuditLog[]
   alerts                    DeliveryAlert[]
   notifications             Notification[]
+  jobOffers                 JobOffer[]
+  assignmentDecisions       AssignmentDecision[]
+}
+
+model Tanker {
+  id                 String                   @id @default(uuid())
+  label              String?
+  driverId           String?
+  fleetId            String?
+  capacityLiters     Int?
+  availabilityStatus TankerAvailabilityStatus @default(AVAILABLE)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  jobOffers          JobOffer[]
+  assignmentDecisions AssignmentDecision[]
+
+  @@index([availabilityStatus])
+}
+
+model JobOffer {
+  id           String      @id @default(uuid())
+  deliveryId   String
+  tankerId     String
+  status       OfferStatus @default(PENDING)
+  score        Int         @default(0)
+  reason       String?
+  expiresAt    DateTime
+  respondedAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  delivery     Delivery    @relation(fields: [deliveryId], references: [id])
+  tanker       Tanker      @relation(fields: [tankerId], references: [id])
+  decisions    AssignmentDecision[]
+
+  @@index([deliveryId, status])
+  @@index([tankerId, status])
+  @@index([expiresAt])
+}
+
+model AssignmentDecision {
+  id          String                   @id @default(uuid())
+  jobOfferId  String
+  deliveryId  String
+  tankerId    String
+  result      AssignmentDecisionResult
+  actorType   ActorType
+  actorId     String?
+  reason      String?
+  createdAt   DateTime                 @default(now())
+
+  jobOffer    JobOffer                 @relation(fields: [jobOfferId], references: [id])
+  delivery    Delivery                 @relation(fields: [deliveryId], references: [id])
+  tanker      Tanker                   @relation(fields: [tankerId], references: [id])
+
+  @@index([deliveryId, createdAt])
+  @@index([tankerId, createdAt])
 }
 
 model DeliveryEvent {

@@ -1,62 +1,108 @@
 import type {
   DeliveryAlertCandidate,
-  DeliveryOperationsView,
+  OperationsDeliveryListItem,
 } from '../services/operationsApi'
 
 type OperationsSummaryCardsProps = {
   alerts: DeliveryAlertCandidate[]
-  selectedDelivery: DeliveryOperationsView | null
+  alertsError: string | null
+  alertsLoading: boolean
+  deliveries: OperationsDeliveryListItem[]
+  deliveriesError: string | null
+  deliveriesLoading: boolean
 }
 
-const severityCount = (alerts: DeliveryAlertCandidate[], severity: string) =>
-  alerts.filter((alert) => alert.severity === severity).length
+type SummaryCard = {
+  label: string
+  value: number | string
+  detail: string
+}
+
+const countAlertsBySeverity = (
+  alerts: DeliveryAlertCandidate[],
+  severities: DeliveryAlertCandidate['severity'][],
+) => alerts.filter((alert) => severities.includes(alert.severity)).length
+
+const isProblemDelivery = (delivery: OperationsDeliveryListItem) =>
+  delivery.activeAlertsCount > 0 ||
+  delivery.status === 'FAILED' ||
+  delivery.status === 'SKIPPED'
 
 export default function OperationsSummaryCards({
   alerts,
-  selectedDelivery,
+  alertsError,
+  alertsLoading,
+  deliveries,
+  deliveriesError,
+  deliveriesLoading,
 }: OperationsSummaryCardsProps) {
-  const activeDeliveryCount = new Set(alerts.map((alert) => alert.deliveryId))
-    .size
+  const criticalHighAlertsCount = countAlertsBySeverity(alerts, [
+    'CRITICAL',
+    'HIGH',
+  ])
+  const demoScenarioCount = deliveries.filter(
+    (delivery) => delivery.isDemoScenario,
+  ).length
+  const problemDeliveryCount = deliveries.filter(isProblemDelivery).length
 
-  const cards = [
+  const deliveryDetail = deliveriesLoading
+    ? 'loading deliveries'
+    : deliveriesError
+      ? 'delivery list unavailable'
+      : 'after current filters'
+
+  const alertsDetail = alertsLoading
+    ? 'loading alerts'
+    : alertsError
+      ? 'alerts unavailable'
+      : 'from alert scan'
+
+  const cards: SummaryCard[] = [
+    {
+      label: 'Visible Deliveries',
+      value: deliveriesLoading ? '...' : deliveries.length,
+      detail: deliveryDetail,
+    },
     {
       label: 'Active Alerts',
-      value: alerts.length,
-      detail: `${severityCount(alerts, 'CRITICAL')} critical`,
+      value: alertsLoading ? '...' : alerts.length,
+      detail: alertsDetail,
     },
     {
-      label: 'Flagged Deliveries',
-      value: activeDeliveryCount,
-      detail: 'from operations alert scan',
+      label: 'Critical / High',
+      value: alertsLoading ? '...' : criticalHighAlertsCount,
+      detail: alertsLoading
+        ? 'loading alerts'
+        : `${countAlertsBySeverity(alerts, ['CRITICAL'])} critical`,
     },
     {
-      label: 'High Severity',
-      value: severityCount(alerts, 'HIGH'),
-      detail: `${severityCount(alerts, 'MEDIUM')} medium`,
+      label: 'Demo Scenarios',
+      value: deliveriesLoading ? '...' : demoScenarioCount,
+      detail: deliveryDetail,
     },
     {
-      label: 'Selected Status',
-      value: selectedDelivery?.delivery.status ?? 'None',
-      detail: selectedDelivery
-        ? `${selectedDelivery.currentStatusAge.ageMinutes} min in status`
-        : 'choose a delivery',
+      label: 'Problem Deliveries',
+      value: deliveriesLoading ? '...' : problemDeliveryCount,
+      detail: 'alerts, failed, or skipped',
     },
   ]
 
   return (
-    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       {cards.map((card) => (
         <article
-          className="rounded-md border border-slate-200 bg-white p-4 shadow-sm"
+          className="rounded-md border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
           key={card.label}
         >
-          <p className="text-xs font-semibold uppercase tracking-normal text-slate-500">
+          <p className="text-xs font-semibold uppercase tracking-normal text-slate-500 dark:text-slate-400">
             {card.label}
           </p>
-          <p className="mt-2 break-words text-2xl font-semibold leading-tight text-slate-950">
+          <p className="mt-2 break-words text-2xl font-semibold leading-tight text-slate-950 dark:text-slate-50">
             {card.value}
           </p>
-          <p className="mt-1 text-sm text-slate-600">{card.detail}</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            {card.detail}
+          </p>
         </article>
       ))}
     </section>

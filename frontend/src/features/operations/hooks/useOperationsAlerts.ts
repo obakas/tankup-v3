@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   getOperationsAlerts,
   type OperationsAlertsResponse,
@@ -12,8 +12,15 @@ export const useOperationsAlerts = () => {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const inFlight = useRef(false)
 
   const loadAlerts = useCallback(async (isRefresh = false) => {
+    if (inFlight.current) {
+      return
+    }
+
+    inFlight.current = true
+
     if (isRefresh) {
       setRefreshing(true)
     } else {
@@ -30,6 +37,7 @@ export const useOperationsAlerts = () => {
     } finally {
       setLoading(false)
       setRefreshing(false)
+      inFlight.current = false
     }
   }, [])
 
@@ -37,6 +45,12 @@ export const useOperationsAlerts = () => {
     let active = true
 
     const load = async (isRefresh = false) => {
+      if (inFlight.current) {
+        return
+      }
+
+      inFlight.current = true
+
       if (isRefresh) {
         setRefreshing(true)
       } else {
@@ -60,6 +74,7 @@ export const useOperationsAlerts = () => {
           setLoading(false)
           setRefreshing(false)
         }
+        inFlight.current = false
       }
     }
 

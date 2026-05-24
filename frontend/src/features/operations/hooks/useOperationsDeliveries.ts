@@ -3,10 +3,13 @@ import {
   listOperationsDeliveries,
   type OperationsDeliveriesFilters,
   type OperationsDeliveriesResponse,
+  type OperationsDeliveryListItem,
 } from '../services/operationsApi'
 
 const getMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Unable to load operations deliveries'
+
+const emptyDeliveries: OperationsDeliveryListItem[] = []
 
 export const useOperationsDeliveries = (
   filters: OperationsDeliveriesFilters = {},
@@ -42,10 +45,14 @@ export const useOperationsDeliveries = (
   useEffect(() => {
     let active = true
 
-    const load = async () => {
-      setLoading(true)
-      setError(null)
+    const load = async (isRefresh = false) => {
+      if (isRefresh) {
+        setRefreshing(true)
+      } else {
+        setLoading(true)
+      }
 
+      setError(null)
       try {
         const response = await listOperationsDeliveries(filters)
 
@@ -59,19 +66,24 @@ export const useOperationsDeliveries = (
       } finally {
         if (active) {
           setLoading(false)
+          setRefreshing(false)
         }
       }
     }
 
     void load()
+    const intervalId = window.setInterval(() => {
+      void load(true)
+    }, 10_000)
 
     return () => {
       active = false
+      window.clearInterval(intervalId)
     }
   }, [filters])
 
   return {
-    deliveries: data?.deliveries ?? [],
+    deliveries: data?.deliveries ?? emptyDeliveries,
     generatedAt: data?.generatedAt ?? null,
     appliedFilters: data?.filters ?? null,
     loading,

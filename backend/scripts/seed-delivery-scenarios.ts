@@ -67,24 +67,38 @@ type DeliveryScenario = {
   notifications?: ScenarioNotificationInput[];
 };
 
+type ScenarioSummary = {
+  key: string;
+  label: string;
+  deliveryId: string;
+  status: DeliveryStatus;
+};
+
 const now = new Date();
 
 async function main() {
-  await clearExistingSeedData();
+  const clearedCount = await clearExistingSeedData();
 
-  const summaries = [];
+  const summaries: ScenarioSummary[] = [];
 
   for (const scenario of buildScenarios()) {
     const summary = await createScenario(scenario);
     summaries.push(summary);
   }
 
+  console.log(
+    `Cleared ${clearedCount} existing demo delivery scenario${
+      clearedCount === 1 ? "" : "s"
+    }.`
+  );
   console.log("Seeded delivery scenarios:");
   for (const summary of summaries) {
     console.log(
       `- ${summary.label}: ${summary.deliveryId} (${summary.status})`
     );
   }
+  console.log("Seeded delivery scenario IDs:");
+  console.log(JSON.stringify(groupSummariesByScenarioName(summaries), null, 2));
 }
 
 async function clearExistingSeedData() {
@@ -99,7 +113,7 @@ async function clearExistingSeedData() {
   const deliveryIds = existing.map((delivery) => delivery.id);
 
   if (deliveryIds.length === 0) {
-    return;
+    return 0;
   }
 
   await prisma.$transaction([
@@ -139,9 +153,13 @@ async function clearExistingSeedData() {
       },
     }),
   ]);
+
+  return deliveryIds.length;
 }
 
-async function createScenario(scenario: DeliveryScenario) {
+async function createScenario(
+  scenario: DeliveryScenario
+): Promise<ScenarioSummary> {
   const delivery = await prisma.delivery.create({
     data: {
       status: scenario.status,
@@ -254,10 +272,24 @@ async function createScenario(scenario: DeliveryScenario) {
   }
 
   return {
+    key: scenario.key,
     label: scenario.label,
     deliveryId: delivery.id,
     status: delivery.status,
   };
+}
+
+function groupSummariesByScenarioName(summaries: ScenarioSummary[]) {
+  return Object.fromEntries(
+    summaries.map((summary) => [
+      summary.label,
+      {
+        key: summary.key,
+        deliveryId: summary.deliveryId,
+        status: summary.status,
+      },
+    ])
+  );
 }
 
 function buildScenarios(): DeliveryScenario[] {
